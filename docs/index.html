@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aeo-translator — Indic blog translation for answer engines</title>
-<meta name="description" content="Translate blogs into 8 Indian languages plus Hinglish, restructured for answer engines, with a quality gate calibrated against real text at AUC 1.00.">
+<title>aeo-translator — SEO and answer-engine workbench for Indian publishers</title>
+<meta name="description" content="Audit a blog post, crawl the whole site, fix what it finds, and translate into 8 Indian languages plus Hinglish — with an answer-engine readiness check and a quality gate calibrated at AUC 1.00.">
 <meta property="og:title" content="aeo-translator">
-<meta property="og:description" content="Indic blog translation for answer engines, with a calibrated quality gate.">
+<meta property="og:description" content="SEO audit, site crawl, answer-engine readiness and Indic translation, in one local tool.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -181,18 +181,20 @@ footer p{max-width:68ch}
   <div class="wrap">
     <div class="eyebrow">Open source · Python · MIT</div>
     <h1>aeo-translator</h1>
-    <p class="lede">A blogging tool for Indian regional search. Finds a topic worth writing, drafts it, renders it into <strong>eight Indian languages plus Hinglish</strong>, restructures each one for answer engines, and refuses to publish anything that still reads like machine output.</p>
+    <p class="lede">An SEO and answer-engine workbench for Indian publishers. Audits a post you paste in, crawls the whole site for what only exists <em>between</em> pages, fixes what it finds, and renders the result into <strong>eight Indian languages plus Hinglish</strong> — refusing to ship anything that still reads like machine output.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/sagarchauhan7792-bot/aeo-translator">View on GitHub</a>
       <a class="btn" href="#studio">Blog Studio</a>
+      <a class="btn" href="#geo">Answer-engine work</a>
       <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">Setup guide</a>
       <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/calibrate.py">Calibration harness</a>
     </div>
     <div class="stats">
+      <div class="stat"><span class="n">10</span><span class="l">on-page check groups, no credentials needed</span></div>
       <div class="stat"><span class="n">9</span><span class="l">languages, incl. Roman-script Hinglish</span></div>
       <div class="stat"><span class="n">1.00</span><span class="l">AUC separating native prose from machine output</span></div>
       <div class="stat"><span class="n">3.2</span><span class="l">Cohen's <em>d</em> — the gate is not a coin flip</span></div>
-      <div class="stat"><span class="n">5</span><span class="l">assumptions the testing proved wrong</span></div>
+      <div class="stat"><span class="n">7</span><span class="l">assumptions the testing proved wrong</span></div>
     </div>
   </div>
 </header>
@@ -264,6 +266,53 @@ footer p{max-width:68ch}
       <p>Drafts are therefore scored on structure, sentence rhythm, an independent editor pass and the safety rails, under a different name. The app states this on screen, next to the score.</p>
       <p>A draft also has no source document, so the fidelity check that protects a translation has nothing to compare against. Every figure a draft contains is listed for a human to verify instead of being silently trusted.</p>
     </div>
+  </div>
+</section>
+
+<section id="geo">
+  <div class="wrap">
+    <h2>The workbench</h2>
+    <p class="sub">A page checker sees one page. Most of what matters in SEO — and nearly all of what matters in AEO — is invisible at that scale.</p>
+
+    <h3>Site-wide crawl</h3>
+    <p>Duplicate titles and bodies, cannibalisation, thin content, <code>noindex</code> and canonical conflicts, orphan pages, and specific internal links to add with the anchor text to use. Throttled, robots-aware, and resumable — 2,434 pages at one request a second is forty minutes, so it appends as it goes and picks up where it stopped.</p>
+    <div class="note warn">
+      <h3>The finding that was wrong, and how</h3>
+      <p>The first version reported <strong>80 broken internal links</strong> on a 60-page sample. Four were checked by hand and <strong>all returned HTTP 200</strong> — tag and contact pages that simply sat outside the sample, inferred broken because they were not in the crawl. Orphan detection had the same flaw.</p>
+      <p>Broken links are now confirmed with a live request, and orphan and inbound-link checks are skipped entirely on a partial crawl, with the interface saying so. Failures went from 101 to 6, and those six are real. Handing a client eighty imaginary broken links would have been worse than handing them nothing.</p>
+    </div>
+
+    <h3>Answer-engine readiness</h3>
+    <p>Answer engines do four things — crawl, chunk, retrieve, quote — and each fails for reasons a classic SEO tool never inspects.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Step</th><th>What is checked</th><th>Why it fails</th></tr></thead>
+        <tbody>
+          <tr><td><b>Reach</b></td><td>13 AI crawlers in robots.txt — GPTBot, ClaudeBot, PerplexityBot, Google-Extended, CCBot and the rest</td><td>If they are blocked, every other AEO effort on the site is wasted. Sites block them by accident constantly.</td></tr>
+          <tr><td><b>Retrieve</b></td><td>Chunk-readiness: dangling openers, missing entity anchors, oversized sections</td><td>Retrieval judges a ~300-word chunk alone. A section opening “This means the dosage should be halved” has no antecedent once retrieved.</td></tr>
+          <tr><td><b>Quote</b></td><td>Attributed statistics, definitions, step lists, standalone answers, FAQ, freshness</td><td>Engines quote specific shapes. General advice does not get lifted.</td></tr>
+          <tr><td><b>Anchor</b></td><td>Entities resolved against Wikidata for <code>sameAs</code></td><td>Mentioning a term is a string match; linking it joins a knowledge graph.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Chunk-readiness is the measurement that separates GEO from SEO, and it discriminates sharply: a section built from dangling pronouns scores <strong>15/100</strong>, a self-contained one <strong>100/100</strong>.</p>
+    <p><em>Verified on the client site: all thirteen AI crawlers are allowed, and a well-formed 210-line <code>llms.txt</code> already exists. Against fixtures that block GPTBot specifically, and everything by wildcard, exactly the right agents are flagged — a checker that passes everything is worthless.</em></p>
+
+    <div class="note">
+      <h3>One number is deliberately absent</h3>
+      <p>Whether ChatGPT or Perplexity actually <em>names</em> you cannot be measured without a paid provider. The hook is wired so it can be switched on, and until it is, the tool reports that it is not measured rather than producing a plausible figure nobody checked. Every other number here comes from the page or the site.</p>
+    </div>
+
+    <h3>Fix-it</h3>
+    <p>The audit knows the title is 16 characters. The writer can write. Until phase three nothing joined those two facts, so the tool produced homework rather than work. Fix-it applies the repairs, re-audits, and shows before and after — <strong>44 → 72</strong> on the test fixture, with every absolute medical claim removed and the hedges put back.</p>
+    <div class="note warn">
+      <h3>It is allowed to refuse, and it does</h3>
+      <p>On its first real run the model invented five statistics, including a <code>279388</code>, despite a prompt forbidding exactly that. The rewrite was rejected, retried with the violation fed back, and only then applied. On a second, thinner fixture both attempts were rejected and the original was kept.</p>
+      <p>Inventing a number always blocks. <em>Removing</em> one is surfaced for review instead, because in a fix that is usually the point — deleting “100% guaranteed cure” deletes the 100, and that is the single most valuable change this tool can make to health copy.</p>
+    </div>
+
+    <h3>Competitors, performance, reporting</h3>
+    <p>A competitor diff that returns a content-gap list rather than a score, because “you 62, them 71” is not something anyone can act on. Performance checks that need no credentials — compression, caching, viewport, image weight, render-blocking scripts — and Core Web Vitals when a free PageSpeed key is present. And a self-contained client report that prints clean to PDF, with a CSV of every finding beside it.</p>
   </div>
 </section>
 
@@ -340,7 +389,7 @@ footer p{max-width:68ch}
       </table>
     </div>
     <p>Every falsified rule stays in the source as a documented failure rather than being quietly deleted — the reasoning that produced them is the reasoning that will produce the next wrong rule.</p>
-    <p>Two more went the same way while building <a href="#studio">Blog Studio</a>: that gap analysis could score coverage in one direction (it rated a query about <em>thyroid symptoms</em> as fully covered by a post about <em>thyroid cancer</em>), and that Google's People Also Ask box could be read from a plain HTTP request (it cannot — the response carries no question data at all). Five wrong assumptions, all of which looked obviously correct until something measured them.</p>
+    <p>Two more went the same way while building <a href="#studio">Blog Studio</a>: that gap analysis could score coverage in one direction (it rated a query about <em>thyroid symptoms</em> as fully covered by a post about <em>thyroid cancer</em>), and that Google's People Also Ask box could be read from a plain HTTP request (it cannot — the response carries no question data at all). Two more followed in phase three: that a link missing from a crawl is a broken link (a 60-page sample of hiims.in reported 80 broken internal links and the first four all returned HTTP 200 — they were simply outside the sample), and that a model listed by an API can be called (Gemini's <code>models.list</code> advertises models that 404 on use). Seven wrong assumptions, every one of which looked obviously correct until something measured it.</p>
   </div>
 </section>
 
@@ -393,6 +442,13 @@ footer p{max-width:68ch}
           <tr><td>Studio · Draft</td><td><span class="tag ok">verified</span></td><td>1,041 words, 6 question headings, every answer block inside the 40–60 word band, 8 FAQs</td></tr>
           <tr><td>Studio · pause &amp; resume</td><td><span class="tag ok">verified</span></td><td>paused for each work packet, resumed with nothing redone</td></tr>
           <tr><td>Studio · Translate</td><td><span class="tag mid">partial</span></td><td>Hindi translation completed (1,381 words); the free test engine's daily quota ran out during back-translation</td></tr>
+          <tr><td>Site crawl</td><td><span class="tag ok">verified</span></td><td>59 pages, resumable, robots-aware; 5 real cannibalisation pairs found and spot-checked</td></tr>
+          <tr><td>AI crawler audit</td><td><span class="tag ok">verified</span></td><td>all 13 allowed on the client site; blocking fixtures flagged exactly the right agents</td></tr>
+          <tr><td>Chunk-readiness</td><td><span class="tag ok">verified</span></td><td>15/100 for dangling openers against 100/100 for self-contained sections</td></tr>
+          <tr><td>Fix-it</td><td><span class="tag ok">verified</span></td><td>44 → 72; a rewrite that invented five statistics was rejected, not applied</td></tr>
+          <tr><td>Performance</td><td><span class="tag mid">partial</span></td><td>credential-free checks working; Core Web Vitals need a free PageSpeed key</td></tr>
+          <tr><td>Client report</td><td><span class="tag ok">verified</span></td><td>self-contained HTML plus CSV, print-clean</td></tr>
+          <tr><td>Competitor diff</td><td><span class="tag mid">partial</span></td><td>exercised through the API; not yet driven through its own tab by hand</td></tr>
           <tr><td>Bhashini API</td><td><span class="tag no">untested</span></td><td>written to the documented ULCA protocol, never actually called — awaiting free registration</td></tr>
           <tr><td>Google Docs + Sheets</td><td><span class="tag no">untested</span></td><td>awaiting OAuth credentials</td></tr>
           <tr><td>Languages beyond Hindi</td><td><span class="tag mid">partial</span></td><td>all nine paths resolve; scoring bands were fitted on Hindi only</td></tr>
@@ -409,7 +465,7 @@ footer p{max-width:68ch}
 <section>
   <div class="wrap">
     <h2>Running it</h2>
-<pre><span class="c"># the app: idea -> draft -> translate -> publish, in a browser</span>
+<pre><span class="c"># the app: audit -> fix -> crawl -> compare -> translate -> report</span>
 python -m studio
 
 <span class="c"># or the pipeline directly. one live post, Hindi, local files only</span>
