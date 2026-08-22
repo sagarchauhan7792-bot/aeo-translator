@@ -1,64 +1,72 @@
-"""Scoring for English drafts -- deliberately NOT the Indic gate.
+"""Scoring for English drafts -- structure AND a real, calibrated AI-likeness gate.
 
 quality.py reports `AI-likeness % (proxy)`, and that number is only meaningful
 because calibrate.py measured it against real Hindi: native journalism, human
 translation and raw MT, separating at AUC 1.00. Three of its six sub-scores
-measure Indic-specific phenomena and are undefined on English:
+measure Indic-specific phenomena and are undefined on English (translationese,
+register, script purity), so that composite is never run here.
 
-  translationese  prepositional calques, जो/जिसे relative clauses, Devanagari
-                  comma habits -- none of which exist in an English draft
-  register        aap/tum honorific consistency -- English has no such axis
-  grammar         script purity against a Unicode block -- trivially 100 for
-                  Latin text, so it measures nothing
+This module carries two SEPARATE gates instead of pretending one number covers
+both:
 
-Running the composite on English would produce a number that looks like the
-Hindi one, sits in the same column, and means something entirely different.
-This module therefore scores what genuinely transfers and gives the result a
-different name -- **AEO + rhythm** -- so the two are never read as comparable.
+  structure     aeo + burstiness + independent review -- language-independent
+                and safety-checked, as before.
+  ai_likeness   en_detect.score() -- calibrated the same way as the Hindi gate,
+                against real BBC News text vs real raw Gemini output (n=8/8,
+                AUC 1.00, Cohen's d 2.79 on the composite; see en_detect.py for
+                the full per-signal breakdown, including two folk-wisdom
+                assumptions that were tested and found false for this model).
 
-What does transfer:
-  aeo         structure is language-independent
-  burstiness  sentence-length variation is a real signal in any language
-  review      an independent reader pass
-  safety      the term-lock and medical-claim guards
-
-A commercial detector WOULD be valid on English, unlike on Indic. None is wired
-in because none is paid for. If one is added later it belongs here, reported as
-its own number next to this one -- not folded into it.
+Neither is QuillBot, GPTZero, Originality.ai or any other commercial detector.
+Checked directly: QuillBot has no public API at all, and GPTZero's API needs a
+paid plan. There is no free way to call either from code. This module reports
+what it actually measured, under its own name, and never borrows a vendor's.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 
+import en_detect
 import quality
 from extract import Article
 
 # Reweighted over the sub-scores that mean something in English.
 WEIGHTS = {"aeo": 0.40, "burstiness": 0.35, "review": 0.25}
 
-MIN_SCORE = 70          # below this the draft goes back for another pass
+MIN_SCORE = 70          # structure gate: below this the draft goes back
+AI_REWRITE_TRIGGER = 20  # reused by convention from the Hindi gate's thresholds
+AI_TARGET = 10           # (config.json -> thresholds); not independently derived
+                         # for English -- there was no operator-specified number
+                         # for this gate, so the existing convention is kept
+                         # rather than inventing a different one.
 
 
 @dataclass
 class EnglishReport:
-    score: float                 # "AEO + rhythm", 0-100
+    score: float                 # structure score, 0-100
     aeo: float
     burstiness: float
     review: float
+    ai_likeness: float            # en_detect composite AI-likeness %, 0-100
+    ai_parameters: list           # named pass/fail, one per calibrated signal
+    ai_all_passed: bool
     words: int
     flags: list
     blocking: list
     passed: bool
-    label: str = "AEO + rhythm"
-    caveat: str = ("Not the Indic AI-likeness proxy. Three of that gate's six "
-                   "sub-scores are undefined on English, and its calibration was "
-                   "measured on Hindi. The two numbers are not comparable.")
+    label: str = "structure"
+    ai_label: str = "AI-likeness (calibrated, English-only)"
+    caveat: str = ("structure is not the Indic AI-likeness proxy -- three of "
+                   "that gate's six sub-scores are undefined on English. "
+                   "ai_likeness is a separate, English-specific calibration "
+                   "(AUC 1.00 on its own test set), not a QuillBot/GPTZero result.")
 
     def dict(self) -> dict:
         return asdict(self)
 
     def summary(self) -> str:
-        return (f"english   {self.label} {self.score:5.1f} | AEO {self.aeo:5.1f} | "
+        return (f"english   structure {self.score:5.1f} | AI-likeness "
+                f"{self.ai_likeness:5.1f}% | AEO {self.aeo:5.1f} | "
                 f"rhythm {self.burstiness:5.1f} | review {self.review:5.1f} | "
                 f"{self.words}w | {'PASS' if self.passed else 'FAIL'}")
 
@@ -69,6 +77,7 @@ def score_draft(art: Article, *, review: dict | None = None,
     aeo_sub = quality.score_aeo(art, "en")
     burst_sub = quality.score_burstiness(art, "en")
     review_score = float(review.get("score", 75.0)) if review else 75.0
+    ai = en_detect.score(art.full_text())
 
     flags = [f.dict() for f in aeo_sub.flags] + [f.dict() for f in burst_sub.flags]
     if review:
@@ -79,6 +88,12 @@ def score_draft(art: Article, *, review: dict | None = None,
         flags.append({"kind": "review", "severity": "note",
                       "detail": "no reviewer pass yet; neutral placeholder used",
                       "sample": ""})
+
+    for p in ai.parameters:
+        if not p["passed"]:
+            flags.append({"kind": f"ai_{p['key']}", "severity": "warn",
+                          "detail": f"{p['label']} -- scored {p['score']:.0f}/100",
+                          "sample": ""})
 
     # Safety rails apply to a draft exactly as they do to a translation: an
     # invented dosage is no safer for having been written rather than translated.
@@ -100,10 +115,14 @@ def score_draft(art: Article, *, review: dict | None = None,
         aeo=round(aeo_sub.score, 1),
         burstiness=round(burst_sub.score, 1),
         review=round(review_score, 1),
+        ai_likeness=ai.ai_likeness,
+        ai_parameters=ai.parameters,
+        ai_all_passed=ai.all_passed,
         words=art.words(),
         flags=flags,
         blocking=blocking,
-        passed=score >= MIN_SCORE and not blocking,
+        passed=(score >= MIN_SCORE and ai.ai_likeness <= AI_REWRITE_TRIGGER
+                and not blocking),
     )
 
 
@@ -117,6 +136,30 @@ def rewrite_brief(report: EnglishReport, limit: int = 12) -> list[str]:
         if f.get("sample"):
             line += f"  (e.g. {f['sample'][:120]})"
         out.append(line)
+    return out
+
+
+def keyword_brief(art: Article, keywords: list[str], limit: int = 6) -> list[str]:
+    """Real, measured density gaps -- not just 'use these keywords' in a prompt.
+
+    seo.py already has the density checker used by the audit; reusing it here
+    means the rewrite loop is graded by the exact same yardstick the finished
+    post will be audited against, instead of the writer's own unverified claim
+    that it "worked the keywords in".
+    """
+    from . import seo
+    body = art.body_text()
+    out = []
+    for kw in keywords[:limit]:
+        density, hits = seo.keyword_density(body, kw.lower())
+        if hits == 0:
+            out.append(f"[warn] keyword: '{kw}' does not appear anywhere in the body.")
+        elif density < 0.15:
+            out.append(f"[warn] keyword: '{kw}' appears only {hits}x "
+                       f"({density}% density) -- too sparse to help this post rank for it.")
+        elif density > 2.5:
+            out.append(f"[warn] keyword: '{kw}' appears {hits}x ({density}% density) "
+                       "-- over-optimised, reads as stuffed.")
     return out
 
 

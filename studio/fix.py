@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 
 import aeo
+import en_detect
 import quality
 from common import config, log, site_profile, warn
 from extract import Article, Block, is_question
@@ -228,13 +229,56 @@ def run(art: Article, report, *, writer, site: str = "", keyword: str = "",
                 "changed": result.get("changed", []),
                 "refused": result.get("refused", [])}
 
-    log(f"fix: {report.score} -> {after.score} (+{after.score - report.score})", indent=1)
+    # AI-likeness gate: the SEO fix succeeded on its own terms, but the
+    # calibrated English detector (en_detect.py; AUC 1.00 on its own test set,
+    # not a QuillBot/GPTZero result -- neither has a usable free API) may still
+    # flag it as reading generated. One extra humanising pass, kept only if it
+    # does not cost any SEO score.
+    ai = en_detect.score(fixed.full_text())
+    if not ai.all_passed:
+        findings = [f"[warn] {p['label']} -- scored {p['score']:.0f}/100"
+                    for p in ai.parameters if not p["passed"]]
+        log(f"fix: AI-likeness {ai.ai_likeness:.0f}% after the SEO fix "
+            f"({len(findings)} parameter(s) failing); one humanising pass", indent=1)
+        try:
+            from . import draft as draftmod
+            h_result = writer.generate(
+                draftmod.humanize_prompt(fixed, findings, profile),
+                stage="fix_humanize", slug=fixed.slug or "post", lang="en")
+            h_candidate = apply_fix(fixed, h_result)
+            h_blocking, _ = _safety(fixed, h_candidate)
+            if h_blocking:
+                warn(f"humanising pass rejected: {h_blocking[0]['detail'][:70]}")
+            else:
+                h_ai = en_detect.score(h_candidate.full_text())
+                h_after = seo.audit(h_candidate, keyword=keyword, site_index=site_index,
+                                    base_url=base, check_links=False)
+                # Only keep it if BOTH scores hold or improve -- a rewrite that
+                # buys a lower AI-likeness number by breaking the SEO fix is a
+                # net loss, not a win.
+                if h_ai.ai_likeness <= ai.ai_likeness and h_after.score >= after.score:
+                    fixed, after, ai = h_candidate, h_after, h_ai
+                    fixed.meta = dict(fixed.meta or {})
+                    fixed.meta["schema"] = aeo.build_schema(fixed, profile, "en", url)
+                    log(f"fix: humanising pass -> AI-likeness {ai.ai_likeness:.0f}%, "
+                        f"SEO {after.score}", indent=2)
+                else:
+                    log("fix: humanising pass did not help without cost; kept "
+                        "the SEO-fixed version", indent=2)
+        except Exception as exc:
+            if exc.__class__.__name__ == "WriterPending":
+                raise
+            warn(f"fix: humanising pass skipped ({exc.__class__.__name__})")
+
+    log(f"fix: {report.score} -> {after.score} (+{after.score - report.score}) | "
+        f"AI-likeness {ai.ai_likeness:.0f}%", indent=1)
     return {
         "applied": True,
         "review": review,
         "before": report.dict(),
         "after": after.dict(),
         "delta": after.score - report.score,
+        "ai_detect": ai.dict(),
         "article": fixed.dict(),
         "schema": fixed.meta["schema"],
         "html": aeo.render_html(fixed, schema=fixed.meta["schema"], canonical=url),

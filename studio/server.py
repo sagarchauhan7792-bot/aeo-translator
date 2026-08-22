@@ -197,8 +197,11 @@ def act_audit(body: dict, job) -> dict:
                                        canonical=f"{base.rstrip('/')}/{art.slug}/")}
 
 
+MAX_HUMANIZE_PASSES = 3
+
+
 def act_draft(body: dict, job) -> dict:
-    from . import draft, english
+    from . import draft, english, fix as fixmod
     from writer import get_writer
 
     brief = body.get("brief")
@@ -210,22 +213,76 @@ def act_draft(body: dict, job) -> dict:
     writer = get_writer()
     art = draft.write(brief, writer=writer, site=body.get("site", ""),
                       words=int(body.get("words") or 900))
+    profile = site_profile(body.get("site") or brief.get("site"))
+    keywords = [q for q in (brief.get("target_queries") or []) if q][:6]
 
-    review = None
-    try:
-        review = writer.generate(
-            _review_prompt(art), stage="draft_review", slug=art.slug, lang="en")
-    except Exception as exc:
-        if exc.__class__.__name__ == "WriterPending":
-            raise
-        log(f"draft review skipped: {exc.__class__.__name__}")
+    def _review(a):
+        try:
+            return writer.generate(_review_prompt(a), stage="draft_review",
+                                   slug=a.slug, lang="en")
+        except Exception as exc:
+            if exc.__class__.__name__ == "WriterPending":
+                raise
+            log(f"draft review skipped: {exc.__class__.__name__}")
+            return None
 
+    review = _review(art)
     report = english.score_draft(art, review=review)
+    log(f"draft: first pass structure {report.score:.0f}, "
+        f"AI-likeness {report.ai_likeness:.0f}%", indent=1)
+
+    # Humanising rewrite loop: fires when the calibrated AI-likeness gate or a
+    # keyword-density gap says so, not on a vague "make it more human" request.
+    passes = 0
+    while (not report.ai_all_passed or not report.passed) and passes < MAX_HUMANIZE_PASSES:
+        passes += 1
+        findings = english.rewrite_brief(report) + english.keyword_brief(art, keywords)
+        if not findings:
+            break
+        log(f"draft: humanise pass {passes} "
+            f"(AI-likeness {report.ai_likeness:.0f}%)", indent=1)
+        result = writer.generate(
+            draft.humanize_prompt(art, findings, profile, attempt=passes),
+            stage="humanize", slug=art.slug, lang="en", salt=f"h{passes}")
+        candidate = fixmod.apply_fix(art, result)
+
+        blocking, _review_notes = fixmod._safety(art, candidate)
+        if blocking:
+            log(f"draft: pass {passes} rejected -- {blocking[0]['detail'][:70]}",
+                indent=2)
+            break
+
+        cand_review = _review(candidate)
+        cand_report = english.score_draft(candidate, review=cand_review)
+
+        # Regression guard, on BOTH axes independently: a rewrite that trades
+        # structure for a lower AI-likeness number (or the reverse) is a
+        # regression, not an improvement, even if one number moved the right
+        # way. Caught by testing: a first version of this only rejected when
+        # NEITHER axis improved, which let a pass through that dropped
+        # structure 52 -> 43 because AI-likeness happened to tick down 1 point.
+        TOL = 1.0
+        structure_worse = cand_report.score < report.score - TOL
+        ai_worse = cand_report.ai_likeness > report.ai_likeness + TOL
+        if structure_worse or ai_worse:
+            log(f"draft: pass {passes} regressed "
+                f"(structure {report.score:.0f}->{cand_report.score:.0f}, "
+                f"AI-likeness {report.ai_likeness:.0f}->{cand_report.ai_likeness:.0f}%); "
+                "keeping the previous version", indent=2)
+            break
+        if cand_report.ai_likeness >= report.ai_likeness and cand_report.score <= report.score:
+            log(f"draft: pass {passes} made no real difference; stopping", indent=2)
+            break
+        art, review, report = candidate, cand_review, cand_report
+        log(f"draft: after pass {passes} structure {report.score:.0f}, "
+            f"AI-likeness {report.ai_likeness:.0f}%", indent=2)
+
     art.save(_slugfile(DRAFTS, art.slug))
     (DRAFTS / f"{art.slug}.md").write_text(
         __import__("aeo").render_markdown(art), encoding="utf-8")
 
     return {"article": art.dict(), "slug": art.slug, "report": report.dict(),
+            "humanize_passes": passes,
             "claims": english.claim_audit(art)}
 
 

@@ -154,3 +154,58 @@ def write(brief: dict, *, writer, site: str = "", words: int = 900) -> Article:
     log(f"draft: {art.words()} words, {len(art.headings())} headings, "
         f"{len(art.faqs)} FAQs", indent=1)
     return art
+
+
+HUMANIZE_SCHEMA = {
+    "title": "string -- <= 60 chars",
+    "meta_description": "string -- 50-155 chars",
+    "tldr_heading": "string",
+    "tldr": ["string x5"],
+    "blocks": [{"type": "h2|h3|p|li", "text": "string"}],
+    "answers": {"<exact heading text>": "40-60 word direct answer"},
+    "faqs": [{"q": "string", "a": "string"}],
+    "notes": "string -- what you changed",
+}
+
+
+def humanize_prompt(art, findings: list[str], profile: dict, *, attempt: int = 1) -> str:
+    """Rewrite to fix specific, measured findings -- not 'sound more human'.
+
+    `findings` mixes structural/review flags (english.rewrite_brief) with real
+    keyword-density gaps (english.keyword_brief) so the model gets the same
+    concrete, checkable feedback the translation rewrite loop uses, rather than
+    a vague instruction that produces nothing testable.
+    """
+    import aeo
+    lines = "\n".join(f"  - {f}" for f in findings)
+    return f"""Revise this post. Automated checks found specific issues -- fix
+these exactly, do not do a generic pass:
+
+{lines}
+
+WHY THESE MATTER:
+  - The paragraph-rhythm and stock-phrase checks are calibrated against real
+    human writing vs real AI output (measured AUC 1.00 on the test set). They
+    catch uniform paragraph lengths, "moreover/furthermore/delve into"-style
+    filler, and colon-led list scaffolding -- rewrite AWAY from those shapes,
+    do not just swap synonyms.
+  - Vary paragraph length on purpose: a two-sentence paragraph next to a
+    five-sentence one reads as written, not generated.
+  - Cut every stock transition. Replace with nothing, or with how someone
+    would actually continue the thought.
+  - Work each named keyword in naturally, in a sentence where it belongs --
+    not by inserting a sentence whose only purpose is containing the keyword.
+
+HARD CONSTRAINTS -- checked automatically after you reply:
+  - Every number, dosage, price and URL must survive unchanged.
+  - Keep the subject, the facts and the structure. This is a repair, not a
+    rewrite into a different post.
+  - Do not shorten it.
+
+BRAND VOICE: {profile.get('voice', 'clear, plain, conversational')}
+
+=== CURRENT POST ===
+{aeo.render_markdown(art)}
+
+Reply with JSON only:
+{json.dumps(HUMANIZE_SCHEMA, indent=2)}"""

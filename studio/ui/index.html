@@ -1067,6 +1067,14 @@ function renderFix(r) {
   card.appendChild(cp2);
   card.appendChild(renderArticle(r.article));
   out.appendChild(card);
+
+  if (r.ai_detect) {
+    out.appendChild(renderAiParams(
+      r.ai_detect.ai_likeness, r.ai_detect.parameters, r.ai_detect.all_passed,
+      'Checked after the SEO fix. If a parameter still failed, one extra ' +
+      'humanising pass was tried and kept only if it did not cost any SEO score — ' +
+      'see "Worth a glance" above if that pass was rejected outright.'));
+  }
 }
 
 /* ---------- ideas ---------- */
@@ -1127,12 +1135,44 @@ $('#d-go').onclick = () => {
     .finally(() => $('#d-go').disabled = false);
 };
 
+function renderAiParams(aiLikeness, parameters, allPassed, note) {
+  const box = el('div', 'card');
+  const head = el('div', 'row');
+  head.style.cssText = 'justify-content:space-between;align-items:center;margin-bottom:4px';
+  const h = el('h2', null, 'AI-detection parameters'); h.style.marginBottom = '0';
+  head.appendChild(h);
+  const badge = el('span', 'chip ' + (allPassed ? 'ok' : 'bad'),
+                   (allPassed ? 'ALL CLEAR' : 'NEEDS WORK') + ' — ' + aiLikeness + '% AI-likeness');
+  head.appendChild(badge);
+  box.appendChild(head);
+  box.appendChild(el('p', 'hint', note ||
+    'Calibrated against real native English writing vs real raw AI output ' +
+    '(AUC 1.00 on the test set) — not a QuillBot or GPTZero result. Neither has ' +
+    'a usable free API; this is the honest free alternative, not a claim of matching them.'));
+
+  const grid = el('div', 'scores');
+  parameters.forEach(p => {
+    const d = el('div', 'sc ' + (p.passed ? 'good' : 'bad'));
+    d.appendChild(el('b', null, Math.round(p.score)));
+    d.appendChild(el('span', null, p.label));
+    grid.appendChild(d);
+  });
+  box.appendChild(grid);
+  return box;
+}
+
 function renderDraft(r) {
   const out = $('#d-out'); out.innerHTML = '';
   const rep = r.report, art = r.article;
 
   const card = el('div', 'card');
   card.appendChild(el('h2', null, art.title));
+  if (r.humanize_passes) {
+    card.appendChild(el('p', 'hint',
+      `Went through ${r.humanize_passes} humanising pass${r.humanize_passes === 1 ? '' : 'es'} ` +
+      'before landing here — a version that regressed structure or AI-likeness, or broke a ' +
+      'safety rule, was rejected and the previous version kept.'));
+  }
 
   const sc = el('div', 'scores');
   [[rep.score, rep.label, rep.passed], [rep.aeo, 'AEO structure', rep.aeo >= 70],
@@ -1144,16 +1184,20 @@ function renderDraft(r) {
   card.appendChild(sc);
 
   const cav = el('div', 'banner info');
-  cav.innerHTML = `<b>This is not the Indic AI-likeness score.</b> ${esc(rep.caveat)}`;
+  cav.innerHTML = `<b>This "structure" score is not the Indic AI-likeness score.</b> ${esc(rep.caveat)}`;
   card.appendChild(cav);
+  out.appendChild(card);
 
+  out.appendChild(renderAiParams(rep.ai_likeness, rep.ai_parameters, rep.ai_all_passed));
+
+  const card2 = el('div', 'card');
   if (r.claims?.length) {
     const cl = el('div', 'banner warn');
     cl.innerHTML = `<b>${r.claims.length} figure${r.claims.length === 1 ? '' : 's'} to verify.</b>
       A draft has no source document, so nothing can be checked automatically. Confirm each
       against a real source before publishing.<ul>` +
       r.claims.slice(0, 8).map(c => `<li><code>${esc(c.value)}</code> — ${esc(c.context || '')}</li>`).join('') + '</ul>';
-    card.appendChild(cl);
+    card2.appendChild(cl);
   }
 
   const bad = (rep.flags || []).filter(f => f.severity !== 'note');
@@ -1162,18 +1206,18 @@ function renderDraft(r) {
     fl.innerHTML = `<table><thead><tr><th>Severity</th><th>Issue</th><th>Detail</th></tr></thead><tbody>` +
       bad.slice(0, 14).map(f => `<tr><td><span class="chip ${f.severity === 'error' ? 'bad' : 'info'}">${esc(f.severity)}</span></td>
         <td class="sm">${esc(f.kind)}</td><td class="sm">${esc(f.detail)}</td></tr>`).join('') + '</tbody></table>';
-    card.appendChild(fl);
+    card2.appendChild(fl);
   }
 
-  card.appendChild(renderArticle(art));
+  card2.appendChild(renderArticle(art));
   const go = el('button', 'btn primary', 'Translate this draft →');
   go.style.marginTop = '14px';
   go.onclick = async () => { await loadLists();
     document.querySelector('nav button[data-tab=translate]').click();
     $('#t-src').value = 'draft'; $('#t-src').dispatchEvent(new Event('change'));
     $('#t-draft').value = r.slug; };
-  card.appendChild(go);
-  out.appendChild(card);
+  card2.appendChild(go);
+  out.appendChild(card2);
 }
 
 function renderArticle(art) {
