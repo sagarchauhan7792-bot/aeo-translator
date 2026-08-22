@@ -220,6 +220,7 @@ pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:
   <div class="spacer"></div>
   <span class="pill" id="writerPill">…</span>
   <span class="pill" id="packetPill" style="display:none"></span>
+  <span class="pill" id="whoPill" style="display:none"></span>
 </div></div>
 
 <main>
@@ -426,6 +427,15 @@ async function boot() {
     `<label><input type="checkbox" value="${esc(l.code)}" ${l.code === 'hi' ? 'checked' : ''}>
      ${esc(l.name)} <span class="muted deva">${esc(l.native)}</span></label>`).join('');
   $('#t-publish').disabled = !CAPS.stages.publish;
+
+  try {
+    const me = await api('/api/whoami');
+    if (me.auth_required && me.signed_in) {
+      const w = $('#whoPill');
+      w.style.display = ''; w.className = 'pill';
+      w.innerHTML = esc(me.name) + ' · <a href="/logout">sign out</a>';
+    }
+  } catch {}
 
   renderCaps();
   loadLists();

@@ -112,8 +112,7 @@ idea  ->  draft (English, AEO-structured)  ->  translate  ->  Google Doc + sheet
 python -m studio          # or double-click blog.bat
 ```
 
-Opens on http://127.0.0.1:8765 (localhost only -- it can spend API quota and
-write to Drive, so it is not exposed to the network). Five tabs:
+Opens on http://127.0.0.1:8765. Eight tabs:
 
 - **My Blog** — the front door. Paste a post, fetch a URL, or pick a draft, and
   get a full on-page SEO audit: title and meta length with a real SERP preview,
@@ -135,7 +134,26 @@ write to Drive, so it is not exposed to the network). Five tabs:
   it writes is surfaced for you to verify, because a draft has no source
   document and therefore nothing the fidelity check can compare against.
 - **Translate** — the pipeline below, unchanged.
+- **Site** — crawls the whole site for what only exists between pages: duplicate
+  titles, cannibalisation, thin content, orphans, and specific internal links to
+  add with the anchor text to use. Throttled, robots-aware, resumable.
+- **Compare** — diffs your page against competitors and returns a content-gap
+  list rather than a score.
+- **Report** — one self-contained HTML file for a client, print-clean to PDF,
+  plus a CSV of every finding.
 - **Library** — everything processed, with scores and Doc links.
+
+### Sharing it with a team
+
+```bash
+python -m studio --set-password    # once
+python -m studio --share           # public HTTPS via Cloudflare Tunnel
+```
+
+The app stays on your machine; Cloudflare provides the address. It **refuses to
+listen on any non-local address until a password is set**, because it holds live
+API keys and can write to your Drive. One shared password, one shared workspace —
+not per-user accounts. See [SETUP.md](SETUP.md).
 
 What the audit deliberately does **not** report: search volume, keyword
 difficulty, backlinks and rank tracking. None of those can be measured from the

@@ -19,6 +19,7 @@ from pathlib import Path
 from common import (ROOT, MissingCredential, config, ledger_load, log,
                     site_profile, read_json, write_json)
 from extract import Article
+from . import auth
 from .jobs import RUNNER
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -467,8 +468,46 @@ ACTIONS = {"audit": act_audit, "ideas": act_ideas, "draft": act_draft,
 class Handler(BaseHTTPRequestHandler):
     server_version = "BlogStudio"
 
+    # Set by serve(); when False the app is localhost-only and needs no login.
+    require_auth = False
+    behind_tls = False
+
     def log_message(self, fmt, *args):        # quiet; jobs do the logging
         pass
+
+    # ------------------------------------------------------------------ auth
+    def _client(self) -> str:
+        # Behind a tunnel every request arrives from 127.0.0.1, so the real
+        # client is whatever the proxy put in the forwarding header. Only
+        # trusted when we know we are behind one.
+        if self.behind_tls:
+            fwd = self.headers.get("CF-Connecting-IP") or self.headers.get("X-Forwarded-For")
+            if fwd:
+                return fwd.split(",")[0].strip()
+        return self.client_address[0]
+
+    def _session(self):
+        if not self.require_auth:
+            return {"name": "local"}
+        return auth.session_from_headers(self.headers)
+
+    def _guard(self) -> bool:
+        """True if the request may proceed. Sends the rejection itself if not."""
+        if not self.require_auth:
+            return True
+        if not auth.is_configured():
+            self._send(503, auth.SETUP_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            return False
+        if self._session():
+            return True
+        if self.path.startswith("/api/"):
+            self._json({"error": "not signed in", "login": "/login"}, 401)
+        else:
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        return False
 
     # -- helpers ----------------------------------------------------------
     def _send(self, code: int, payload: bytes, ctype: str) -> None:
@@ -500,6 +539,31 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
+
+        if path == "/login":
+            if not self.require_auth:
+                return self._redirect("/")
+            if not auth.is_configured():
+                return self._send(503, auth.SETUP_PAGE.encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            return self._send(200, auth.login_page(), "text/html; charset=utf-8")
+
+        if path == "/logout":
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header("Set-Cookie", auth.clear_cookie())
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/api/whoami":
+            sess = self._session()
+            return self._json({"signed_in": bool(sess),
+                               "name": (sess or {}).get("name", ""),
+                               "auth_required": self.require_auth})
+
+        if not self._guard():
+            return
 
         if path in ("/", "/index.html"):
             return self._file(UI_DIR / "index.html")
@@ -561,6 +625,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urllib.parse.urlparse(self.path).path
+
+        if path == "/login":
+            return self._do_login()
+
+        if not self._guard():
+            return
+
+        # A hostile page must not be able to make the browser fire an
+        # authenticated request on the user's behalf.
+        if not auth.origin_ok(self.headers, self.headers.get("Host", "")):
+            return self._json({"error": "cross-origin request refused"}, 403)
+
         if not path.startswith("/api/run/"):
             return self._json({"error": "not found"}, 404)
 
@@ -572,8 +648,45 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         label = (body.get("topic") or body.get("slug") or body.get("url")
                  or kind).strip()[:60]
-        job = RUNNER.submit(kind, label, lambda j, b=body, f=fn: f(b, j))
+        who = (self._session() or {}).get("name", "local")
+        job = RUNNER.submit(kind, f"{label}" + (f"  ·  {who}" if who != "local" else ""),
+                            lambda j, b=body, f=fn: f(b, j))
         return self._json({"job": job.id})
+
+    def _redirect(self, to: str) -> None:
+        self.send_response(302)
+        self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _do_login(self) -> None:
+        addr = self._client()
+        wait = auth.throttled(addr)
+        if wait:
+            return self._send(429, auth.login_page(
+                f"Too many attempts. Try again in {wait} seconds."),
+                "text/html; charset=utf-8")
+
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n).decode("utf-8", "replace") if n else ""
+        form = urllib.parse.parse_qs(raw)
+        password = (form.get("password") or [""])[0]
+        name = (form.get("name") or [""])[0].strip() or "someone"
+
+        if not auth.check_password(password):
+            auth.record_failure(addr)
+            log(f"auth: failed sign-in from {addr}")
+            return self._send(401, auth.login_page("That password is not right."),
+                              "text/html; charset=utf-8")
+
+        auth.clear_failures(addr)
+        log(f"auth: {name} signed in from {addr}")
+        self.send_response(302)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie",
+                         auth.cookie_header(auth.issue(name), secure=self.behind_tls))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _file(self, path: Path) -> None:
         try:
@@ -589,9 +702,34 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, path.read_bytes(), ctype)
 
 
-def serve(host: str = "127.0.0.1", port: int = 8765) -> None:
+def serve(host: str = "127.0.0.1", port: int = 8765, *,
+          behind_tls: bool = False) -> None:
+    local_only = host in ("127.0.0.1", "localhost", "::1")
+
+    # The interlock. Everything else in this file is convenience; this is the
+    # part that stops the app being handed to the internet with live API keys
+    # and no login.
+    if not local_only and not auth.is_configured():
+        raise SystemExit(
+            f"\nRefusing to listen on {host} without a password.\n\n"
+            "Blog Studio holds live API keys, can spend your quota, crawls any\n"
+            "site you point it at, and can write to your Google Drive. Bound to\n"
+            "a public address with no login, all of that belongs to whoever\n"
+            "finds the URL.\n\n"
+            "  python -m studio --set-password\n\n"
+            "Then start it again. (Localhost needs no password.)\n")
+
+    Handler.require_auth = not local_only or auth.is_configured()
+    Handler.behind_tls = behind_tls
+
     httpd = ThreadingHTTPServer((host, port), Handler)
     log(f"Blog Studio on http://{host}:{port}")
+    if Handler.require_auth:
+        log("  sign-in required" + ("" if auth.is_configured()
+                                    else "  (NO PASSWORD SET -- run --set-password)"))
+    else:
+        log("  localhost only, no sign-in required")
+
     caps = capabilities()
     log(f"  writer: {caps['writer'] or 'NONE'}"
         + ("" if caps.get("writer_inline") else "  (queues packets for /aeo-rewrite)"))

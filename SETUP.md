@@ -153,6 +153,80 @@ therefore available. With the default `claude_local` writer it queues packets
 and pauses at the Draft stage; a free Gemini key makes every stage run in one
 click.
 
+## Sharing Blog Studio with your team
+
+Blog Studio is localhost-only by default and needs no login there. The moment it
+listens on anything else it **refuses to start without a password** — it holds
+live API keys, can spend your quota, crawls whatever it is pointed at, and can
+write to your Drive.
+
+### 1. Set the shared password
+
+```bash
+python -m studio --set-password
+```
+
+Stored in `auth.json` as a scrypt hash with a random salt, never in plain text.
+That file is gitignored. Share the password with your team over something better
+than email.
+
+### 2. Get a public HTTPS address
+
+```bash
+python -m studio --share
+```
+
+Prints a public URL and keeps the app on your own machine — your files, caches
+and API keys never leave it. Needs `cloudflared`:
+
+```bash
+winget install --id Cloudflare.cloudflared
+```
+
+The quick-tunnel address changes on every restart and dies when the process stops
+or the machine sleeps. For a fixed address, create a **named tunnel** on a domain
+you own:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create blog-studio
+cloudflared tunnel route dns blog-studio studio.yourdomain.com
+cloudflared tunnel run --url http://127.0.0.1:8765 blog-studio
+```
+
+Then run `python -m studio --no-browser` alongside it.
+
+### Or just your own network
+
+```bash
+python -m studio --host 0.0.0.0
+```
+
+Reachable from other machines on the same Wi-Fi. Still requires the password.
+
+### What everyone shares
+
+One workspace. Everyone who signs in sees the same crawls, drafts, reports and
+library, and spends the same API quota. Sign-in asks for a name so jobs are
+labelled with who ran them, but it is **not** per-user accounts and there is no
+data separation. That is the intended design for a small team; do not hand the
+URL to clients.
+
+Jobs run one at a time, so two people clicking at once will queue rather than
+collide.
+
+### What protects it
+
+| | |
+|---|---|
+| Password | scrypt hash, random salt, minimum 8 characters |
+| Session | signed cookie, HttpOnly, SameSite=Lax, Secure behind the tunnel, 14 days |
+| Brute force | 6 attempts per IP, then a 5-minute lockout |
+| CSRF | cross-origin POSTs refused |
+| Interlock | non-local bind is refused outright until a password exists |
+
+Sign out at `/logout`.
+
 ## Verifying an install
 
 ```bash

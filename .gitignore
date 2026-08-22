@@ -30,3 +30,8 @@ briefs/
 
 # Generated client reports
 reports/
+
+# Auth (password hash + cookie secret) - never commit
+auth.json
+
+cloudflared.log
