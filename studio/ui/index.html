@@ -32,8 +32,17 @@ button{font:inherit}
 .top{position:sticky;top:0;z-index:20;background:var(--surface);
   border-bottom:1px solid var(--rule);padding:0 20px}
 .topin{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:22px;height:56px}
-.brand{font-family:"Instrument Serif",Georgia,serif;font-size:23px;letter-spacing:-.01em}
-nav{display:flex;gap:2px;margin-left:6px}
+.brand{font-family:"Instrument Serif",Georgia,serif;font-size:23px;
+  letter-spacing:-.01em;white-space:nowrap;flex:none}
+/* Eight tabs plus two status pills overflow a narrow window. The nav scrolls
+   rather than pushing the pills off-screen, and the pills drop out entirely
+   below tablet width where there is no room for them. */
+nav{display:flex;gap:2px;margin-left:6px;overflow-x:auto;min-width:0;
+  scrollbar-width:none;-ms-overflow-style:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:none}
+.topin>.pill{flex:none}
+@media(max-width:900px){.topin>.pill{display:none!important}}
 nav button{background:none;border:none;padding:8px 14px;border-radius:7px;cursor:pointer;
   color:var(--muted);font-weight:500;font-size:14px}
 nav button:hover{background:var(--surface-2);color:var(--ink)}
@@ -175,6 +184,20 @@ pre.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.6;
 .filt button{padding:5px 12px;border-radius:20px;border:1px solid var(--rule-2);
   background:var(--surface);color:var(--muted);cursor:pointer;font-size:12.5px}
 .filt button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.gapl{background:var(--surface);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.gapl .g{display:flex;gap:10px;padding:10px 13px;border-bottom:1px solid var(--rule);align-items:flex-start}
+.gapl .g:last-child{border-bottom:none}
+.gapl .g .q{flex:1;font-size:13.5px}
+.gapl .g .n{flex:none;font-size:11px;color:var(--faint);font-family:"JetBrains Mono",monospace}
+.cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px}
+.cmp .c{background:var(--surface-2);border:1px solid var(--rule);border-radius:9px;padding:10px 12px}
+.cmp .c b{display:block;font-family:"Instrument Serif",serif;font-size:22px;line-height:1.1}
+.cmp .c.behind b{color:var(--bad)} .cmp .c.ahead b{color:var(--good)}
+.cmp .c span{font-size:11px;color:var(--muted)}
+.bot{display:flex;gap:8px;padding:9px 12px;border-bottom:1px solid var(--rule);align-items:center;font-size:13px}
+.bot:last-child{border-bottom:none}
+.bot .nm{flex:none;width:170px;font-family:"JetBrains Mono",monospace;font-size:11.5px}
+.bot .wy{flex:1;color:var(--muted);font-size:12px}
 pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:9px;
   padding:13px;font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.55;
   max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word}
@@ -188,7 +211,10 @@ pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:
     <button data-tab="audit" class="on">My Blog</button>
     <button data-tab="ideas">Ideas</button>
     <button data-tab="draft">Draft</button>
+    <button data-tab="site">Site</button>
+    <button data-tab="compare">Compare</button>
     <button data-tab="translate">Translate</button>
+    <button data-tab="report">Report</button>
     <button data-tab="library">Library</button>
   </nav>
   <div class="spacer"></div>
@@ -223,7 +249,11 @@ pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:
         <div class="f grow"><label>Meta description (optional &mdash; overrides what is in the post)</label>
           <input id="a-desc" placeholder="Leave blank to use the post's own"></div>
         <label style="display:flex;align-items:center;gap:7px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)">
-          <input type="checkbox" id="a-links" checked style="min-width:auto"> Check for broken links</label>
+          <input type="checkbox" id="a-links" checked style="min-width:auto"> Broken links</label>
+        <label style="display:flex;align-items:center;gap:7px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)">
+          <input type="checkbox" id="a-geo" checked style="min-width:auto"> Answer-engine checks</label>
+        <label style="display:flex;align-items:center;gap:7px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)">
+          <input type="checkbox" id="a-perf" style="min-width:auto"> Performance</label>
         <button class="btn primary" id="a-go">Run the audit</button>
       </div>
     </div>
@@ -299,6 +329,60 @@ pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:
     <div id="t-out"></div>
   </section>
 
+
+  <!-- ===================== SITE ===================== -->
+  <section class="panel" id="p-site">
+    <div class="card">
+      <h2>Crawl the whole site</h2>
+      <p class="hint">Duplicate titles, cannibalisation, thin pages, orphans and broken internal links only exist <em>between</em> pages &mdash; a per-post audit cannot see them. Throttled and resumable: stop it any time and re-run, and it picks up where it left off.</p>
+      <div class="row">
+        <div class="f grow"><label>Site</label><input id="s-site" placeholder="hiims.in" list="siteList"></div>
+        <div class="f"><label>URL contains</label><input id="s-filter" placeholder="/blog" style="width:110px"></div>
+        <div class="f"><label>Max pages</label><input id="s-limit" type="number" value="150" style="width:100px"></div>
+        <div class="f"><label>Delay (s)</label><input id="s-delay" type="number" step="0.1" value="0.8" style="width:90px"></div>
+        <button class="btn primary" id="s-go">Crawl</button>
+      </div>
+      <p class="hint" style="margin:12px 0 0">A limit or a filter makes it a <b>partial</b> crawl, and the orphan and inbound-link checks are skipped &mdash; on a partial crawl every link to an uncrawled page looks broken. Leave both blank for the full picture.</p>
+    </div>
+    <div class="job" id="j-site"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="s-out"></div>
+  </section>
+
+  <!-- ===================== COMPARE ===================== -->
+  <section class="panel" id="p-compare">
+    <div class="card">
+      <h2>What are they covering that you aren't?</h2>
+      <p class="hint">Diffs your page against up to three competitors. Returns a content-gap list rather than a score, because "you 62, them 71" is not something you can act on.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div class="f"><label>Your page</label>
+          <select id="c-src"><option value="url">A URL</option><option value="draft">A saved draft</option></select></div>
+        <div class="f grow" id="c-urlwrap"><label>Your URL</label><input id="c-url" placeholder="https://hiims.in/blog/..."></div>
+        <div class="f grow" id="c-draftwrap" style="display:none"><label>Draft</label><select id="c-draft"></select></div>
+      </div>
+      <div class="f" style="margin-bottom:12px"><label>Competitor URLs &mdash; one per line, up to three</label>
+        <textarea id="c-rivals" style="min-height:90px" placeholder="https://competitor.com/their-post/&#10;https://another.com/post/"></textarea></div>
+      <button class="btn primary" id="c-go">Compare</button>
+    </div>
+    <div class="job" id="j-compete"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="c-out"></div>
+  </section>
+
+  <!-- ===================== REPORT ===================== -->
+  <section class="panel" id="p-report">
+    <div class="card">
+      <h2>Client-ready report</h2>
+      <p class="hint">Builds one self-contained HTML file from whatever you have run &mdash; audit, answer-engine readiness, performance, site crawl and any fixes applied. Prints clean to PDF. A CSV of every finding is written alongside it.</p>
+      <div id="r-state" class="banner info" style="margin-bottom:14px"></div>
+      <div class="row">
+        <div class="f grow"><label>Report title</label><input id="r-title" placeholder="hiims.in &mdash; SEO &amp; AEO review"></div>
+        <div class="f"><label>Brand</label><input id="r-brand" placeholder="HIIMS"></div>
+        <button class="btn primary" id="r-go">Build report</button>
+      </div>
+    </div>
+    <div class="job" id="j-report"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="r-out"></div>
+  </section>
+
   <!-- ===================== LIBRARY ===================== -->
   <section class="panel" id="p-library">
     <div class="card">
@@ -315,12 +399,15 @@ const el = (t, c, x) => { const e = document.createElement(t); if (c) e.classNam
   if (x !== undefined) e.textContent = x; return e; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let CAPS = null, BRIEF = null, DRAFT = null;
+const LAST = {};
 
 /* ---------- tabs ---------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.tab));
   if (b.dataset.tab === 'library') loadLibrary();
+  if (b.dataset.tab === 'report') reportState();
+  if (b.dataset.tab === 'compare') loadLists();
   if (b.dataset.tab === 'draft' || b.dataset.tab === 'translate') loadLists();
 });
 
@@ -382,13 +469,25 @@ async function loadLists() {
     || '<option value="">(no drafts yet)</option>';
   $('#t-draft').innerHTML = opts;
   $('#a-draft').innerHTML = opts;
+  $('#c-draft').innerHTML = opts;
   const briefs = BRIEF ? `<option value="__current">${esc(BRIEF.topic)} (just generated)</option>` : '';
   $('#d-brief').innerHTML = briefs || '<option value="">(run Ideas first)</option>';
 }
 
 /* ---------- jobs ---------- */
 function runJob(kind, body, onDone) {
-  const box = $('#j-' + kind); box.classList.add('on');
+  // Stages added later (geo, perf, fix) share the panel they were launched
+  // from and have no markup of their own, so the box is created on demand
+  // rather than being a required part of every panel.
+  let box = $('#j-' + kind);
+  if (!box) {
+    box = el('div', 'job');
+    box.id = 'j-' + kind;
+    box.innerHTML = '<div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre>';
+    const host = document.querySelector('.panel.on') || document.querySelector('main');
+    host.insertBefore(box, host.firstChild);
+  }
+  box.classList.add('on');
   const dot = box.querySelector('.dot'), t = box.querySelector('.t'), log = box.querySelector('.log');
   dot.className = 'dot run'; t.textContent = 'starting…'; log.textContent = '';
 
@@ -397,6 +496,10 @@ function runJob(kind, body, onDone) {
   }).then(({job}) => new Promise(res => {
     const tick = async () => {
       const j = await api('/api/job/' + job);
+      // A page reload can tear the box out from under an in-flight poll. The
+      // job is server-side and carries on regardless, so stop updating the
+      // detached node and resolve rather than throwing inside the loop.
+      if (!box.isConnected) return res(j);
       log.textContent = (j.log || []).join('\n');
       log.scrollTop = log.scrollHeight;
       t.textContent = j.status + ' · ' + j.label;
@@ -433,7 +536,8 @@ $('#a-go').onclick = () => {
   if (src === 'url'   && !body.url)         return $('#a-url').focus();
 
   $('#a-go').disabled = true;
-  runJob('audit', body, r => renderAudit(r)).finally(() => $('#a-go').disabled = false);
+  runJob('audit', body, r => { LAST.audit = r; renderAudit(r); runExtras(body); })
+    .finally(() => $('#a-go').disabled = false);
 };
 
 let AUDIT = null;
@@ -546,6 +650,21 @@ function renderAudit(r) {
     filt.appendChild(b);
   });
   fc.appendChild(filt); fc.appendChild(acc); draw('all');
+  if (CAPS?.stages?.fix) {
+    const fixBtn = el('button', 'btn primary', 'Fix these for me →');
+    fixBtn.style.marginTop = '14px';
+    fixBtn.onclick = () => {
+      fixBtn.disabled = true;
+      runJob('fix', {slug: r.slug, site: $('#a-site').value.trim(),
+                     keyword: $('#a-kw').value.trim()},
+             res => { LAST.fix = res; renderFix(res); })
+        .finally(() => fixBtn.disabled = false);
+    };
+    fc.appendChild(fixBtn);
+    fc.appendChild(el('p', 'hint',
+      'Rewrites the post to clear these findings, then re-audits and shows the before and after. '
+      + 'A rewrite that invents a figure or inflates a medical claim is rejected, not applied.'));
+  }
   out.appendChild(fc);
 
   if (r.schema) {
@@ -586,6 +705,353 @@ function renderAudit(r) {
   };
   nx.appendChild(go);
   out.appendChild(nx);
+}
+
+/* ---------- site crawl ---------- */
+$('#s-go').onclick = () => {
+  const site = $('#s-site').value.trim();
+  if (!site) return $('#s-site').focus();
+  $('#s-go').disabled = true;
+  runJob('site', {site, filter: $('#s-filter').value.trim(),
+                  limit: +$('#s-limit').value || 0, delay: +$('#s-delay').value || 0.8},
+         r => { LAST.site = r.site; renderSite(r.site); })
+    .finally(() => $('#s-go').disabled = false);
+};
+
+function renderSite(rep) {
+  const out = $('#s-out'); out.innerHTML = '';
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, rep.host));
+
+  const sc = el('div', 'scores');
+  [[rep.pages_ok, 'pages analysed'], [rep.totals.fail, 'failures'],
+   [rep.totals.warn, 'warnings'], [rep.totals.words_median, 'median words'],
+   [rep.totals.with_schema, 'with schema'],
+   [rep.totals.orphans === null ? '—' : rep.totals.orphans, 'orphans']].forEach(([v, l]) => {
+    const d = el('div', 'sc'); d.appendChild(el('b', null, v));
+    d.appendChild(el('span', null, l)); sc.appendChild(d);
+  });
+  card.appendChild(sc);
+
+  if (!rep.complete) {
+    const b = el('div', 'banner info');
+    b.innerHTML = '<b>Partial crawl.</b> Orphan and inbound-link checks were skipped — '
+      + 'on a capped or filtered crawl every link to an uncrawled page looks broken. '
+      + 'Clear the limit and the filter for the full picture.';
+    card.appendChild(b);
+  }
+
+  const tw = el('div', 'tw');
+  tw.innerHTML = '<table><thead><tr><th></th><th>Issue</th><th>Pages</th><th>Why it matters</th></tr></thead><tbody>'
+    + rep.issues.map(i => `<tr>
+        <td><span class="chip ${i.severity === 'fail' ? 'bad' : i.severity === 'warn' ? 'partial' : 'info'}">${esc(i.severity)}</span></td>
+        <td>${esc(i.title)}</td><td class="n">${i.count}</td>
+        <td class="sm muted">${esc(i.detail)}</td></tr>`).join('')
+    + '</tbody></table>';
+  card.appendChild(tw);
+  out.appendChild(card);
+
+  const cann = rep.issues.find(i => i.kind === 'cannibalisation');
+  if (cann && cann.items.length) {
+    const c = el('div', 'card');
+    c.appendChild(el('h2', null, 'Pages competing with each other'));
+    c.appendChild(el('p', 'hint', 'Two pages chasing one topic split their own rankings. Merge them, or retarget one.'));
+    const g = el('div', 'gapl');
+    cann.items.forEach(x => {
+      const row = el('div', 'g');
+      const q = el('div', 'q');
+      q.innerHTML = `<b>${esc(x.value)}</b><br>` + x.competing.map(y =>
+        `<span class="muted sm">vs ${esc(y.title)} (${y.score})</span>`).join('<br>');
+      row.appendChild(q); g.appendChild(row);
+    });
+    c.appendChild(g); out.appendChild(c);
+  }
+
+  if (rep.link_suggestions && rep.link_suggestions.length) {
+    const c = el('div', 'card');
+    c.appendChild(el('h2', null, 'Internal links to add'));
+    c.appendChild(el('p', 'hint', 'Ordered by how few inbound links the target has — those are where a new link changes something.'));
+    const tw2 = el('div', 'tw');
+    tw2.innerHTML = '<table><thead><tr><th>Link to this page</th><th>Inbound now</th><th>From</th><th>Anchor</th></tr></thead><tbody>'
+      + rep.link_suggestions.slice(0, 20).map(sug => sug.link_from.slice(0, 2).map((f, i) => `<tr>
+          ${i === 0 ? `<td rowspan="${Math.min(2, sug.link_from.length)}" class="sm">${esc(sug.title || sug.target)}</td>
+                       <td rowspan="${Math.min(2, sug.link_from.length)}" class="n">${sug.inbound_now}</td>` : ''}
+          <td class="sm"><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc((f.title || f.url).slice(0, 48))}</a></td>
+          <td class="sm muted">${esc(f.anchor)}</td></tr>`).join('')).join('')
+      + '</tbody></table>';
+    c.appendChild(tw2); out.appendChild(c);
+  }
+}
+
+/* ---------- compare ---------- */
+$('#c-src').onchange = () => {
+  const v = $('#c-src').value;
+  $('#c-urlwrap').style.display = v === 'url' ? '' : 'none';
+  $('#c-draftwrap').style.display = v === 'draft' ? '' : 'none';
+};
+
+$('#c-go').onclick = () => {
+  const rivals = $('#c-rivals').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (!rivals.length) return $('#c-rivals').focus();
+  const body = {competitors: rivals};
+  if ($('#c-src').value === 'url') body.url = $('#c-url').value.trim();
+  else body.slug = $('#c-draft').value;
+  if ($('#c-src').value === 'url' && !body.url) return $('#c-url').focus();
+  $('#c-go').disabled = true;
+  runJob('compete', body, r => renderCompare(r.compare))
+    .finally(() => $('#c-go').disabled = false);
+};
+
+function renderCompare(c) {
+  const out = $('#c-out'); out.innerHTML = '';
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, 'Where you stand'));
+
+  const grid = el('div', 'cmp');
+  Object.entries(c.summary).forEach(([k, v]) => {
+    const d = el('div', 'c ' + (v.behind ? 'behind' : 'ahead'));
+    d.appendChild(el('b', null, v.mine));
+    d.appendChild(el('span', null, `${k.replace(/_/g, ' ')} · best ${v.best}`));
+    grid.appendChild(d);
+  });
+  card.appendChild(grid);
+
+  if (c.wins.length) {
+    const w = el('div', 'banner info');
+    w.innerHTML = '<b>Where you are ahead</b><ul>' + c.wins.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+    card.appendChild(w);
+  }
+  out.appendChild(card);
+
+  if (c.gaps.length) {
+    const g = el('div', 'card');
+    g.appendChild(el('h2', null, `${c.gaps.length} topics they cover and you don't`));
+    g.appendChild(el('p', 'hint', 'Their headings with no counterpart on your page. Questions first — those are what answer engines match.'));
+    const list = el('div', 'gapl');
+    c.gaps.forEach(x => {
+      const row = el('div', 'g');
+      const q = el('div', 'q');
+      q.innerHTML = esc(x.heading) + (x.is_question ? ' <span class="chip info">question</span>' : '');
+      row.appendChild(q);
+      row.appendChild(el('div', 'n', x.sources.length + '×'));
+      list.appendChild(row);
+    });
+    g.appendChild(list); out.appendChild(g);
+  }
+
+  if (c.entity_gaps && c.entity_gaps.length) {
+    const e = el('div', 'card');
+    e.appendChild(el('h2', null, 'Entities they name and you do not'));
+    e.appendChild(el('p', 'hint', 'Answer engines cite named entities. Missing ones are missing matches.'));
+    const list = el('div', 'gapl');
+    c.entity_gaps.forEach(x => {
+      const row = el('div', 'g');
+      row.appendChild(el('div', 'q', x.entity));
+      row.appendChild(el('div', 'n', x.sources.length + '×'));
+      list.appendChild(row);
+    });
+    e.appendChild(list); out.appendChild(e);
+  }
+}
+
+/* ---------- report ---------- */
+function reportState() {
+  const have = [];
+  if (LAST.audit) have.push('on-page audit');
+  if (LAST.geo) have.push('answer-engine readiness');
+  if (LAST.perf) have.push('performance');
+  if (LAST.site) have.push('site crawl');
+  if (LAST.fix) have.push('fixes applied');
+  $('#r-state').innerHTML = have.length
+    ? '<b>Ready to include:</b> ' + have.join(', ') + '.'
+    : '<b>Nothing to report yet.</b> Run an audit in My Blog, or a crawl in Site, then come back.';
+}
+
+$('#r-go').onclick = () => {
+  $('#r-go').disabled = true;
+  runJob('report', {
+    title: $('#r-title').value.trim() || (LAST.audit?.article?.title) || 'SEO report',
+    brand: $('#r-brand').value.trim(),
+    url: LAST.audit?.serp?.url || '',
+    audit: LAST.audit?.report || null, geo: LAST.geo || null,
+    perf: LAST.perf || null, site: LAST.site || null, fix: LAST.fix || null,
+  }, r => {
+    const out = $('#r-out'); out.innerHTML = '';
+    const card = el('div', 'card');
+    card.appendChild(el('h2', null, 'Report built'));
+    const a = el('a', 'btn primary', 'Open the report');
+    a.href = '/report/' + r.name + '.html'; a.target = '_blank'; a.rel = 'noopener';
+    card.appendChild(a);
+    const b = el('a', 'btn', 'Download the CSV');
+    b.href = '/report/' + r.name + '.csv'; b.style.marginLeft = '8px';
+    card.appendChild(b);
+    card.appendChild(el('p', 'hint', 'Saved to reports/' + r.name + '.html — print it to PDF from the browser.'));
+    out.appendChild(card);
+  }).finally(() => $('#r-go').disabled = false);
+};
+
+/* ---------- my blog: geo + perf + fix ---------- */
+function runExtras(body) {
+  if ($('#a-geo').checked) {
+    runJob('geo', body, r => { LAST.geo = r.geo; renderGeo(r.geo); });
+  }
+  if ($('#a-perf').checked && body.url) {
+    runJob('perf', {url: body.url}, r => { LAST.perf = r.perf; renderPerf(r.perf); });
+  }
+}
+
+function renderGeo(g) {
+  const out = $('#a-out');
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, 'Answer-engine readiness'));
+  card.appendChild(el('p', 'hint',
+    'Classic SEO asks whether a page ranks. Answer engines crawl, chunk, retrieve and quote — each of those can fail separately.'));
+
+  const sc = el('div', 'scores');
+  [[g.score, 'overall', g.score >= 70], [g.chunk_score, 'retrieval readiness', g.chunk_score >= 70],
+   [g.citation_score, 'citation-worthiness', g.citation_score >= 60],
+   [g.chunks, 'chunks', true]].forEach(([v, l, ok]) => {
+    const d = el('div', 'sc ' + (l === 'chunks' ? '' : ok ? 'good' : 'bad'));
+    d.appendChild(el('b', null, typeof v === 'number' ? Math.round(v) : v));
+    d.appendChild(el('span', null, l)); sc.appendChild(d);
+  });
+  card.appendChild(sc);
+
+  const acc = g.crawler_access || {};
+  if (acc.agents && Object.keys(acc.agents).length) {
+    const blocked = acc.blocked || [];
+    const b = el('div', 'banner ' + (blocked.length ? 'warn' : 'info'));
+    b.innerHTML = blocked.length
+      ? `<b>${blocked.length} AI crawler(s) blocked: ${blocked.map(esc).join(', ')}.</b>
+         Until robots.txt allows them, no amount of content work will get this site cited by those engines.`
+      : `<b>All ${Object.keys(acc.agents).length} AI crawlers can reach the site.</b>
+         GPTBot, ClaudeBot, PerplexityBot, Google-Extended and the rest are allowed.`;
+    card.appendChild(b);
+  }
+  if (g.gated) {
+    const b = el('div', 'banner warn');
+    b.innerHTML = '<b>Score reduced.</b> Crawlers are blocked, so the rest of this describes a page no engine can read.';
+    card.appendChild(b);
+  }
+
+  const bad = (g.findings || []).filter(f => f.status !== 'pass');
+  if (bad.length) {
+    const acc2 = el('div', 'acc');
+    bad.forEach(f => {
+      const row = el('div', 'fx ' + f.status);
+      row.appendChild(el('div', 'gtag', f.group));
+      row.appendChild(el('div', 'ic', f.status === 'warn' ? '!' : '×'));
+      const bd = el('div', 'bd');
+      bd.appendChild(el('div', 'm', f.message));
+      if (f.fix) bd.appendChild(el('div', 'fixit', f.fix));
+      row.appendChild(bd); acc2.appendChild(row);
+    });
+    card.appendChild(acc2);
+  }
+
+  const vis = g.visibility || {};
+  if (!vis.measured) {
+    const n = el('div', 'banner info');
+    n.innerHTML = '<b>AI visibility is not measured.</b> ' + esc(vis.reason || '');
+    card.appendChild(n);
+  }
+  out.appendChild(card);
+}
+
+function renderPerf(p) {
+  const out = $('#a-out');
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, 'Performance'));
+  if (p.vitals) {
+    const sc = el('div', 'scores');
+    const d0 = el('div', 'sc' + (p.vitals.score >= 80 ? ' good' : ' bad'));
+    d0.appendChild(el('b', null, p.vitals.score));
+    d0.appendChild(el('span', null, 'PageSpeed (' + p.vitals.strategy + ')'));
+    sc.appendChild(d0);
+    Object.entries(p.vitals.metrics).forEach(([k, m]) => {
+      const d = el('div', 'sc ' + (m.rating === 'good' ? 'good' : 'bad'));
+      d.appendChild(el('b', null, m.display || m.value));
+      d.appendChild(el('span', null, k.replace(/-/g, ' ') + ' · ' + m.rating));
+      sc.appendChild(d);
+    });
+    card.appendChild(sc);
+  } else if (p.vitals_note) {
+    const b = el('div', 'banner info');
+    b.innerHTML = '<b>Core Web Vitals not measured.</b><br><span class="sm">'
+      + esc(p.vitals_note).replace(/\n/g, '<br>') + '</span>';
+    card.appendChild(b);
+  }
+  const bad = (p.basics?.checks || []).filter(c => c.status !== 'pass');
+  const acc = el('div', 'acc');
+  (bad.length ? bad : p.basics.checks).forEach(c => {
+    const row = el('div', 'fx ' + c.status);
+    row.appendChild(el('div', 'gtag', 'perf'));
+    row.appendChild(el('div', 'ic', c.status === 'pass' ? '✓' : c.status === 'warn' ? '!' : '×'));
+    const bd = el('div', 'bd');
+    bd.appendChild(el('div', 'm', c.message));
+    if (c.fix) bd.appendChild(el('div', 'fixit', c.fix));
+    row.appendChild(bd); acc.appendChild(row);
+  });
+  card.appendChild(acc);
+  out.appendChild(card);
+}
+
+function renderFix(r) {
+  const out = $('#a-out'); out.innerHTML = '';
+  const card = el('div', 'card');
+  if (!r.applied) {
+    card.appendChild(el('h2', null, 'Nothing was applied'));
+    const b = el('div', 'banner warn');
+    b.innerHTML = r.reason === 'safety'
+      ? '<b>The rewrite was rejected by the safety check.</b><ul>'
+        + (r.blocking || []).map(x => `<li>${esc(x.detail)}</li>`).join('')
+        + '</ul>The original post is unchanged. This is the guard working: a fix that '
+        + 'invents a figure or inflates a medical claim is not a fix.'
+      : '<b>The rewrite did not improve the score</b> ('
+        + r.before.score + ' → ' + (r.after ? r.after.score : '?') + '), so the original was kept.';
+    card.appendChild(b);
+    out.appendChild(card);
+    return;
+  }
+
+  card.appendChild(el('h2', null, r.article.title));
+  const ba = el('div', 'scores');
+  [[r.before.score, 'before', false], [r.after.score, 'after', true],
+   ['+' + r.delta, 'improvement', true], [r.after.stats.words, 'words', null]]
+    .forEach(([v, l, good]) => {
+      const d = el('div', 'sc ' + (good === null ? '' : good ? 'good' : 'bad'));
+      d.appendChild(el('b', null, v)); d.appendChild(el('span', null, l)); ba.appendChild(d);
+    });
+  card.appendChild(ba);
+
+  if (r.changed?.length) {
+    const u = el('div', 'banner info');
+    u.innerHTML = '<b>What changed</b><ul>' + r.changed.map(c => `<li>${esc(c)}</li>`).join('') + '</ul>';
+    card.appendChild(u);
+  }
+  if (r.review?.length) {
+    const u = el('div', 'banner warn');
+    u.innerHTML = '<b>Worth a glance</b><ul>' + r.review.map(c => `<li>${esc(c.detail)}</li>`).join('')
+      + '</ul>Removing a figure is usually correct when an overclaim goes, but check it was not a real fact.';
+    card.appendChild(u);
+  }
+  if (r.refused?.length) {
+    const u = el('div', 'banner warn');
+    u.innerHTML = '<b>Refused</b><ul>' + r.refused.map(c => `<li>${esc(c)}</li>`).join('') + '</ul>';
+    card.appendChild(u);
+  }
+
+  const cp = el('button', 'btn', 'Copy the fixed post');
+  cp.onclick = () => { navigator.clipboard.writeText(r.markdown);
+    cp.textContent = 'Copied'; setTimeout(() => cp.textContent = 'Copy the fixed post', 1500); };
+  card.appendChild(cp);
+  const cp2 = el('button', 'btn', 'Copy the HTML');
+  cp2.style.marginLeft = '8px';
+  cp2.onclick = () => { navigator.clipboard.writeText(r.html);
+    cp2.textContent = 'Copied'; setTimeout(() => cp2.textContent = 'Copy the HTML', 1500); };
+  card.appendChild(cp2);
+  card.appendChild(renderArticle(r.article));
+  out.appendChild(card);
 }
 
 /* ---------- ideas ---------- */

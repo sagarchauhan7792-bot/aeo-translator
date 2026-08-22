@@ -142,9 +142,10 @@
     "native_review": 0.08
   },
   "writer": {
-    "backend": "claude_local",
+    "_comment": "gemini_free is the default now that a key is present: it answers inline, so Draft and Fix-it complete in one click instead of queueing packets. claude_local remains the fallback and needs no key, but it pauses for /aeo-rewrite, which is fine for batch translation and painful for a fix loop.",
+    "backend": "gemini_free",
     "fallback": [
-      "gemini_free"
+      "claude_local"
     ],
     "packet_dir": "packets"
   },

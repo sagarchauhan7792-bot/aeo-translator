@@ -27,3 +27,6 @@ samples/
 # Generated working files (client content)
 drafts/
 briefs/
+
+# Generated client reports
+reports/

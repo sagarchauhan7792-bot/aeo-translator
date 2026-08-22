@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from pathlib import Path
 
 import requests
 
@@ -20,7 +21,22 @@ from .base import (Writer, WriterUnavailable, transcreate_prompt, review_prompt,
                    rewrite_prompt)
 
 API = "https://generativelanguage.googleapis.com/v1beta"
-PREFERRED = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest")
+
+# Concrete model ids before the "-latest" aliases. The aliases resolve to
+# whatever Google is pointing them at, which is also what everyone else's
+# untuned code calls, so they are the first to return 503 under load --
+# measured: gemini-flash-latest returned 503 on half of four identical probes
+# while gemini-3.6-flash answered all four. The aliases stay in the list as a
+# backstop for when a pinned id is retired.
+PREFERRED = ("gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-flash-latest",
+             "gemini-flash-lite-latest")
+
+# Retired models are still advertised by models.list but refuse generateContent
+# with "no longer available to new users. Please update your code to use
+# models/X". The replacement is in the error text, so it can be followed.
+_REPLACEMENT = re.compile(r"use\s+models/([A-Za-z0-9._-]+)")
+
+_MODEL_CACHE = Path(__file__).resolve().parent.parent / "cache" / "gemini_model.txt"
 
 
 class GeminiFreeWriter(Writer):
@@ -35,52 +51,135 @@ class GeminiFreeWriter(Writer):
                 "variable or save it to aeo-translator/gemini_api_key.txt")
         self.model = model or self._pick_model()
 
+    # ------------------------------------------------------------- model pick
+    def _probe(self, model: str) -> tuple[bool, str | None]:
+        """Can this model actually be called? Returns (ok, suggested_replacement).
+
+        Listing a model is not the same as being allowed to call it. models.list
+        happily returns models that 404 on use, so the only reliable test is a
+        one-token call.
+        """
+        try:
+            r = requests.post(
+                f"{API}/models/{model}:generateContent", params={"key": self.key},
+                timeout=45,
+                json={"contents": [{"parts": [{"text": "hi"}]}],
+                      "generationConfig": {"maxOutputTokens": 1, "temperature": 0}})
+            if r.status_code == 200:
+                return True, None
+            msg = str(r.json().get("error", {}).get("message", ""))
+            hit = _REPLACEMENT.search(msg)
+            if r.status_code == 429:
+                warn(f"{model}: quota exhausted on this key")
+            return False, (hit.group(1) if hit else None)
+        except Exception as exc:
+            warn(f"probing {model} failed: {exc.__class__.__name__}")
+            return False, None
+
     def _pick_model(self) -> str:
+        cached = None
+        if _MODEL_CACHE.exists():
+            cached = _MODEL_CACHE.read_text(encoding="utf-8").strip() or None
+
+        tried: set[str] = set()
+        queue = ([cached] if cached else []) + list(PREFERRED)
+
+        while queue:
+            model = queue.pop(0)
+            if not model or model in tried:
+                continue
+            tried.add(model)
+            ok, replacement = self._probe(model)
+            if ok:
+                if model != cached:
+                    _MODEL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                    _MODEL_CACHE.write_text(model, encoding="utf-8")
+                    log(f"gemini: using {model}")
+                return model
+            if replacement and replacement not in tried:
+                warn(f"{model} is retired; the API suggests {replacement}")
+                queue.insert(0, replacement)
+
+        # Last resort: ask what exists and try every flash-ish candidate.
         try:
             resp = requests.get(f"{API}/models", params={"key": self.key}, timeout=30)
             resp.raise_for_status()
             names = [m["name"].split("/")[-1] for m in resp.json().get("models", [])
                      if "generateContent" in m.get("supportedGenerationMethods", [])]
         except Exception as exc:
-            warn(f"could not list Gemini models ({exc.__class__.__name__}); "
-                 f"defaulting to {PREFERRED[0]}")
-            return PREFERRED[0]
+            raise WriterUnavailable(
+                f"Gemini key set, but no model could be reached "
+                f"({exc.__class__.__name__}). Check the key at "
+                "https://aistudio.google.com/apikey") from exc
 
-        for want in PREFERRED:
-            if want in names:
-                return want
-        flash = [n for n in names if "flash" in n and "thinking" not in n]
-        if flash:
-            warn(f"none of {PREFERRED} available; using {flash[0]}")
-            return flash[0]
+        for name in [n for n in names
+                     if "flash" in n and not any(x in n for x in ("tts", "image", "thinking"))]:
+            if name in tried:
+                continue
+            ok, _ = self._probe(name)
+            if ok:
+                _MODEL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                _MODEL_CACHE.write_text(name, encoding="utf-8")
+                warn(f"falling back to {name}")
+                return name
+
         raise WriterUnavailable(
-            f"no usable Gemini model found. API offered: {', '.join(names[:10])}")
+            "the Gemini key works but every model refused generateContent. "
+            f"Tried: {', '.join(sorted(tried))}. The API listed: "
+            f"{', '.join(names[:8])}")
 
     # -------------------------------------------------------------- transport
-    def _call(self, prompt: str, *, retries: int = 4) -> dict:
-        url = f"{API}/models/{self.model}:generateContent"
+    def _post(self, model: str, prompt: str, *, retries: int = 3) -> dict | None:
+        """One model, with backoff. Returns None if it is unavailable, not broken."""
+        url = f"{API}/models/{model}:generateContent"
         body = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.85, "responseMimeType": "application/json"},
+            "generationConfig": {"temperature": 0.85,
+                                 "responseMimeType": "application/json"},
         }
-        last: Exception | None = None
         for attempt in range(retries):
             try:
                 resp = requests.post(url, params={"key": self.key}, json=body, timeout=180)
-                if resp.status_code == 429:
-                    wait = min(60, 5 * (2 ** attempt))
-                    warn(f"gemini rate limited; waiting {wait}s")
+                # 429 is quota, 503 is a demand spike. Both are worth waiting out,
+                # and both mean this model rather than this request is the problem.
+                if resp.status_code in (429, 503):
+                    if attempt == retries - 1:
+                        warn(f"{model}: {resp.status_code} after {retries} tries")
+                        return None
+                    wait = min(45, 4 * (2 ** attempt))
+                    warn(f"{model}: {resp.status_code}, waiting {wait}s")
                     time.sleep(wait)
                     continue
                 resp.raise_for_status()
-                data = resp.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                 return _parse_json(text)
             except Exception as exc:
-                last = exc
-                if attempt < retries - 1:
-                    time.sleep(2 ** attempt)
-        raise RuntimeError(f"gemini call failed after {retries} attempts: {last}")
+                if attempt == retries - 1:
+                    warn(f"{model}: {exc.__class__.__name__}")
+                    return None
+                time.sleep(2 ** attempt)
+        return None
+
+    def _call(self, prompt: str) -> dict:
+        """Try the chosen model, then fail over to the others.
+
+        A single model being overloaded should not fail the job when three
+        equivalent ones are available on the same key.
+        """
+        order = [self.model] + [m for m in PREFERRED if m != self.model]
+        for i, model in enumerate(order):
+            result = self._post(model, prompt)
+            if result is not None:
+                if model != self.model:
+                    warn(f"failed over from {self.model} to {model}")
+                    self.model = model
+                    _MODEL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                    _MODEL_CACHE.write_text(model, encoding="utf-8")
+                return result
+        raise RuntimeError(
+            "every Gemini model refused the request: " + ", ".join(order)
+            + ". Usually a demand spike or the daily free quota — try again "
+              "shortly, or switch the writer backend to claude_local.")
 
     # -------------------------------------------------------------- the calls
     def generate(self, prompt: str, *, stage: str, slug: str,

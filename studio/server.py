@@ -72,7 +72,22 @@ def capabilities() -> dict:
             "detail": "Publishing is unavailable. Runs still produce local "
                       "HTML, Markdown and JSON in out/."})
 
+    from . import perf as _perf
+    has_psi = bool(_perf.api_key())
+    if not has_psi:
+        caps["missing"].append({
+            "what": "PageSpeed API key (Core Web Vitals)",
+            "detail": "The anonymous endpoint's quota is exhausted, so LCP/CLS/INP "
+                      "need a free key. Other performance checks still run."})
+
     caps["stages"] = {
+        "site": True,
+        "geo": True,
+        "compete": True,
+        "perf_basic": True,
+        "perf_vitals": has_psi,
+        "fix": caps["writer"] is not None,
+        "report": True,
         "audit": True,                       # needs nothing at all
         "ideas": True,                       # autocomplete needs nothing
         "draft": caps["writer"] is not None,
@@ -294,8 +309,157 @@ def act_translate(body: dict, job) -> dict:
     return {"results": results, "slug": art.slug}
 
 
+
+def act_site(body: dict, job) -> dict:
+    """Crawl a site and report what only a crawl can see."""
+    from . import crawl as crawlmod
+    site = (body.get("site") or "").strip()
+    if not site:
+        raise ValueError("give a site")
+    limit = int(body.get("limit") or 0)
+    url_filter = (body.get("filter") or "").strip()
+
+    pages = crawlmod.crawl(
+        site, limit=limit, url_filter=url_filter,
+        delay=float(body.get("delay") or crawlmod.DEFAULT_DELAY),
+        workers=int(body.get("workers") or crawlmod.DEFAULT_WORKERS),
+        refresh=bool(body.get("refresh")))
+
+    complete = not limit and not url_filter
+    report = crawlmod.analyse(pages, crawlmod.host_of(
+        site if "//" in site else f"https://{site}"), complete=complete,
+        verify_links=int(body.get("verify_links") or 40))
+    return {"site": report}
+
+
+def act_geo(body: dict, job) -> dict:
+    """AEO/GEO report for one page plus the site-level reach checks."""
+    from . import geo as geomod
+    import sources
+    from extract import from_markdown
+
+    site = (body.get("site") or "").strip()
+    if body.get("url"):
+        art = sources.load_url(body["url"].strip())
+    elif body.get("slug"):
+        art = Article.load(_slugfile(DRAFTS, body["slug"]))
+    elif (body.get("text") or "").strip():
+        art = from_markdown(body["text"])
+    else:
+        raise ValueError("paste a post, give a URL, or pick a draft")
+
+    profile = site_profile(art.source_url or site)
+    return {"geo": geomod.audit(art, site=site, brand=profile.get("brand") or "",
+                                resolve_entities=bool(body.get("entities", True))),
+            "title": art.title}
+
+
+def act_perf(body: dict, job) -> dict:
+    from . import perf as perfmod
+    url = (body.get("url") or "").strip()
+    if not url:
+        raise ValueError("give a URL")
+    return {"perf": perfmod.report(url, strategy=body.get("strategy") or "mobile")}
+
+
+def act_compete(body: dict, job) -> dict:
+    from . import compete as cmod
+    import sources
+    from extract import from_markdown
+
+    if body.get("url"):
+        mine = sources.load_url(body["url"].strip())
+    elif body.get("slug"):
+        mine = Article.load(_slugfile(DRAFTS, body["slug"]))
+    elif (body.get("text") or "").strip():
+        mine = from_markdown(body["text"])
+    else:
+        raise ValueError("give your page first")
+
+    rivals = [u.strip() for u in (body.get("competitors") or []) if u.strip()][:3]
+    if not rivals:
+        raise ValueError("give at least one competitor URL")
+    others = cmod.fetch_all(rivals)
+    if not others:
+        raise ValueError("none of the competitor URLs could be fetched")
+    return {"compare": cmod.compare(mine, others)}
+
+
+def act_fix(body: dict, job) -> dict:
+    from . import fix as fixmod, seo, crawl as crawlmod
+    import sources
+    from extract import from_markdown
+    from writer import get_writer
+
+    site = (body.get("site") or "").strip()
+    if body.get("slug"):
+        art = Article.load(_slugfile(DRAFTS, body["slug"]))
+    elif body.get("url"):
+        art = sources.load_url(body["url"].strip())
+    elif (body.get("text") or "").strip():
+        art = from_markdown(body["text"])
+    else:
+        raise ValueError("nothing to fix")
+
+    base = ("https://" + site.replace("https://", "").replace("http://", "").rstrip("/")
+            if site else CFG["aeo"]["hreflang_base"])
+    keyword = (body.get("keyword") or "").strip()
+    before = seo.audit(art, keyword=keyword, base_url=base, check_links=False)
+
+    links = None
+    if site:
+        cached = crawlmod.load_cached(site)
+        if cached:
+            from . import ideas
+            idx = {"urls": [{"url": p.url, "slug": p.url.rstrip("/").rsplit("/", 1)[-1],
+                             "tokens": sorted(crawlmod._tokens(p.title or ""))}
+                            for p in cached if p.title]}
+            status, url, score = ideas.classify(art.title, idx)
+            if url:
+                links = [{"url": url, "why": "closely related existing post"}]
+
+    result = fixmod.run(art, before, writer=get_writer(), site=site,
+                        keyword=keyword, internal_links=links, base_url=base)
+
+    if result.get("applied"):
+        from common import slugify
+        slug = slugify(result["article"]["title"])
+        fixed = Article.from_dict(result["article"])
+        fixed.save(_slugfile(DRAFTS, slug))
+        (DRAFTS / f"{slug}.md").write_text(result["markdown"], encoding="utf-8")
+        result["slug"] = slug
+    return result
+
+
+def act_report(body: dict, job) -> dict:
+    """Build the client-facing HTML report from whatever has been run."""
+    from . import report as repmod
+    import aeo as aeomod
+
+    html = repmod.build(
+        title=body.get("title") or "SEO report",
+        url=body.get("url") or "",
+        brand=body.get("brand") or "",
+        audit=body.get("audit"), geo=body.get("geo"),
+        perf=body.get("perf"), site=body.get("site"), fix=body.get("fix"))
+
+    findings = list((body.get("audit") or {}).get("findings", []))
+    findings += (body.get("geo") or {}).get("findings", [])
+
+    from common import slugify
+    name = slugify(body.get("title") or "report") or "report"
+    out = ROOT / "reports"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{name}.html").write_text(html, encoding="utf-8")
+    (out / f"{name}.csv").write_text(repmod.to_csv(findings), encoding="utf-8-sig")
+    return {"html": html, "csv": repmod.to_csv(findings),
+            "path": str(out / f"{name}.html"), "name": name}
+
+
 ACTIONS = {"audit": act_audit, "ideas": act_ideas, "draft": act_draft,
-           "translate": act_translate}
+           "translate": act_translate, "site": act_site, "geo": act_geo,
+           "perf": act_perf, "compete": act_compete, "fix": act_fix,
+           "report": act_report}
 
 
 # ------------------------------------------------------------------ handler
@@ -377,6 +541,14 @@ class Handler(BaseHTTPRequestHandler):
             if not f.exists():
                 return self._json({"error": "no such draft"}, 404)
             return self._json(json.loads(f.read_text(encoding="utf-8")))
+
+        if path.startswith("/report/"):
+            f = (ROOT / "reports" / path.rsplit("/", 1)[-1])
+            if f.is_file() and f.suffix in (".html", ".csv"):
+                return self._send(200, f.read_bytes(),
+                                  ("text/html" if f.suffix == ".html" else "text/csv")
+                                  + "; charset=utf-8")
+            return self._json({"error": "no such report"}, 404)
 
         if path == "/api/packets":
             try:
