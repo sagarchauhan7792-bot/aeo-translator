@@ -1,0 +1,167 @@
+# Setup
+
+Everything below is optional at install time. The pipeline runs without any of
+it using `--engine mymemory --no-publish`; each missing credential produces a
+message naming the file to create and where to get it, not a stack trace.
+
+## 1. Python packages
+
+```bash
+pip install trafilatura beautifulsoup4 lxml regex indic-transliteration \
+            google-api-python-client google-auth-oauthlib google-auth-httplib2
+```
+
+`google-ads` is only needed for keyword volumes:
+
+```bash
+pip install google-ads
+```
+
+## 2. Bhashini (translation) — free
+
+The production translation engine. Registration is free.
+
+1. Sign up at <https://bhashini.gov.in>
+2. Go to **ULCA → My Profile → API Key**
+3. Copy the **User ID** and the **ULCA API Key**
+
+Then either set environment variables:
+
+```bash
+export BHASHINI_USER_ID=...
+export BHASHINI_API_KEY=...
+```
+
+or save each value in its own file next to the code:
+
+```
+aeo-translator/bhashini_user_id.txt
+aeo-translator/bhashini_api_key.txt
+```
+
+Check it works:
+
+```bash
+python -c "from translate import client; print(client().endpoint()[0])"
+```
+
+That prints the inference endpoint returned by the pipeline config call. The
+config response is cached for six hours in `cache/pipeline_config.json`.
+
+## 3. Google Docs + Sheets — for publishing
+
+1. Open the [Google Cloud Console](https://console.cloud.google.com/) and create
+   a project (or pick an existing one).
+2. Enable three APIs: **Google Docs API**, **Google Sheets API**, **Google Drive
+   API**.
+3. **Credentials → Create credentials → OAuth client ID → Desktop app**.
+4. Download the JSON and save it as `aeo-translator/credentials.json`.
+
+The first publish opens a browser once to authorise. The token is cached in
+`token.json` and refreshed automatically after that.
+
+Scopes requested: `documents`, `spreadsheets`, `drive.file`. `drive.file` only
+grants access to files this tool creates — it cannot read the rest of the Drive.
+
+Docs land in a Drive folder named **AEO Translations**, in a per-language
+subfolder. The tracker sheet is created once and its id remembered in
+`sheet_state.json`; to point at an existing sheet instead, set `google.sheet_id`
+in `config.json`.
+
+## 4. Google Ads Keyword Planner — for real search volumes
+
+Without this, the `volume_in`, `competition` and `cpc_inr` columns stay empty.
+They are never estimated.
+
+Create `aeo-translator/google-ads.yaml`:
+
+```yaml
+developer_token: YOUR_DEV_TOKEN
+client_id: YOUR_OAUTH_CLIENT_ID
+client_secret: YOUR_OAUTH_SECRET
+refresh_token: YOUR_REFRESH_TOKEN
+login_customer_id: YOUR_MCC_ID_NO_DASHES
+use_proto_plus: True
+```
+
+and put the account id in `google_ads_customer_id.txt` (or
+`GOOGLE_ADS_CUSTOMER_ID`).
+
+Keyword Planner returns **banded** volumes (1000–10000) unless the account has
+active spend; accounts with spend return exact figures.
+
+Before using a language's volumes the tool queries `language_constant` to
+confirm the id really is that language. A wrong id would silently return another
+language's numbers, which is worse than returning none — so on a mismatch it
+skips that language rather than reporting them.
+
+## 5. Gemini (optional) — for unattended runs
+
+The default writer backend, `claude_local`, needs a Claude Code session open, so
+it cannot run on a schedule. For scheduled runs, get a free key at
+<https://aistudio.google.com/apikey> and set `GEMINI_API_KEY` or save it to
+`gemini_api_key.txt`, then:
+
+```bash
+python run.py --url ... --writer gemini_free
+```
+
+The model id is discovered from the API rather than hard-coded, so a retired
+model degrades to the next available flash model instead of failing every run.
+
+---
+
+## Per-client configuration
+
+### `config.json`
+
+- `site_profiles` — brand name, voice, YMYL flag, location and sitemap per
+  domain. `_default` covers anything unmatched.
+- `aeo.hreflang_base` — the site's base URL, used for canonical and hreflang.
+- `thresholds` — the rewrite gate. `rewrite_trigger_ai_pct` is 20 rather than 30
+  deliberately: a document at 25% would fail the 20% pass bar while never
+  triggering a rewrite, so it would be marked failed without anyone trying to
+  fix it. Anything above 30 still always rewrites.
+- `score_weights` — must sum to 1.0; the code refuses to start otherwise. Re-run
+  `calibrate.py` after changing these.
+
+### `glossary.json`
+
+- `never_translate` — brand and product names kept in Latin script.
+- `transliterate_only` — rendered in the target script, never semantically
+  translated. **Mutually exclusive with `never_translate`**; a term in both
+  produces a self-contradictory writer prompt.
+- `preferred` — per-language renderings that override the MT's choice.
+- `medical_claim_guard` — claims that may never be introduced, and hedge markers
+  that may never be deleted.
+
+Numeric protections (dosages, prices, phone numbers, URLs) live in
+`patterns.py`, in code rather than JSON, because escaping regexes through JSON
+is a reliable source of silent bugs.
+
+---
+
+## Verifying an install
+
+```bash
+python calibrate.py --fetch --build-mt-free   # fetch fixtures (network)
+python calibrate.py                           # expect AUC 1.00 on both classes
+python test_rewrite_loop.py                   # expect ALL CHECKS PASSED
+python features.py                            # raw feature table by class
+python run.py --file testdata/sample-post.md --langs hi --no-publish --engine mymemory
+```
+
+The last command pauses and queues a work packet. Run `/aeo-rewrite` and re-run
+it to finish.
+
+## Adding a language
+
+1. Add an entry to `config.json → languages` (code, name, native, Bhashini code,
+   script, Unicode range, region, honorific).
+2. Add its rules to `linguistics.py`: `VERB_ENDINGS`, `AI_CONNECTIVES`,
+   `CALQUES`, `HONORIFICS`, `FORMAL_MARKERS`.
+3. Add question stems to `keywords.py → QUESTION_STEMS` and a Google Ads
+   language constant to `LANG_CONSTANTS`.
+4. Add native and MT fixtures under `samples/` and re-run `calibrate.py`. The
+   bands in `quality.py` were fitted on Hindi; do not assume they transfer
+   without checking.

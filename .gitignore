@@ -1,0 +1,25 @@
+# --- secrets: never commit ---
+credentials.json
+token.json
+google-ads.yaml
+google_ads_customer_id.txt
+bhashini_user_id.txt
+bhashini_api_key.txt
+gemini_api_key.txt
+*.key
+.env
+
+# --- generated state and client content ---
+cache/
+out/
+packets/
+state.jsonl
+sheet_state.json
+pipinstall.log
+__pycache__/
+*.pyc
+
+# Calibration fixtures are fetched, not authored here: they are excerpts of
+# third-party journalism and encyclopedia text held locally for scoring tests.
+# Rebuild them with:  python calibrate.py --fetch --build-mt-free
+samples/

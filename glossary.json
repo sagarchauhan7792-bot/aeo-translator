@@ -1,0 +1,87 @@
+{
+  "_comment": "Term-lock. Anything listed here is pinned across translation AND every humanising rewrite pass. quality.py hard-fails a document whose locked terms or numbers drifted. Regex-based protections live in patterns.py (code, not config) so escaping stays sane. Add client terms per project. never_translate and transliterate_only are mutually exclusive: a term in both produces a self-contradictory prompt.",
+  "never_translate": [
+    "HIIMS",
+    "Revnox",
+    "Khul Ke Pucho",
+    "Acharya Manish",
+    "Super Urja",
+    "Shilajit",
+    "Paurush Oil",
+    "WhatsApp",
+    "Instagram",
+    "YouTube",
+    "Google",
+    "Facebook"
+  ],
+  "transliterate_only": {
+    "_comment": "Rendered in the target script but never semantically translated.",
+    "Ayurveda": {
+      "hi": "आयुर्वेद",
+      "mr": "आयुर्वेद",
+      "gu": "આયુર્વેદ",
+      "bn": "আয়ুর্বেদ",
+      "ta": "ஆயுர்வேதம்",
+      "te": "ఆయుర్వేదం",
+      "kn": "ಆಯುರ್ವೇದ",
+      "pa": "ਆਯੁਰਵੇਦ"
+    },
+    "Panchakarma": {
+      "hi": "पंचकर्म",
+      "mr": "पंचकर्म",
+      "gu": "પંચકર્મ",
+      "bn": "পঞ্চকর্ম",
+      "ta": "பஞ்சகர்மா",
+      "te": "పంచకర్మ",
+      "kn": "ಪಂಚಕರ್ಮ",
+      "pa": "ਪੰਚਕਰਮ"
+    }
+  },
+  "preferred": {
+    "_comment": "source term -> preferred target term. Overrides whatever the MT produced. Keeps plain-spoken brand voice instead of clinical register.",
+    "hi": {
+      "treatment": "इलाज",
+      "diabetes": "डायबिटीज़",
+      "blood pressure": "ब्लड प्रेशर",
+      "kidney": "किडनी",
+      "liver": "लिवर",
+      "side effects": "साइड इफेक्ट",
+      "diet": "खान-पान",
+      "lifestyle": "जीवनशैली"
+    },
+    "mr": {
+      "treatment": "उपचार",
+      "diet": "आहार",
+      "lifestyle": "जीवनशैली"
+    }
+  },
+  "medical_claim_guard": {
+    "_comment": "YMYL. The rewrite loop may change phrasing but must never introduce a stronger claim than the source made, and must never delete a hedge the source had.",
+    "forbidden_new_claims": [
+      "cure",
+      "guaranteed",
+      "100%",
+      "permanent cure",
+      "no side effects",
+      "instant relief",
+      "miracle",
+      "इलाज की गारंटी",
+      "पूर्ण इलाज",
+      "गारंटी",
+      "चमत्कारी"
+    ],
+    "hedge_markers": [
+      "may",
+      "can help",
+      "consult",
+      "doctor",
+      "physician",
+      "supervision",
+      "सलाह",
+      "डॉक्टर",
+      "चिकित्सक",
+      "मदद कर सकता",
+      "हो सकता"
+    ]
+  }
+}
