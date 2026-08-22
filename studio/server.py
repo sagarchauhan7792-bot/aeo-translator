@@ -96,6 +96,11 @@ def capabilities() -> dict:
         "publish": has_google,
     }
     caps["engines"] = ["bhashini"] if has_bhashini else []
+    if caps["writer_inline"] and caps["writer"] == "gemini_free":
+        # Reuses the same GEMINI_API_KEY already configured for the writer, so
+        # it is the free fallback for the moment MyMemory's ~1000 word/day
+        # anonymous quota runs out -- no separate signup needed.
+        caps["engines"].append("gemini")
     caps["engines"].append("mymemory")
     caps["languages"] = [{"code": e["code"], "name": e["name"], "native": e["native"]}
                          for e in CFG["languages"]]

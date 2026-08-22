@@ -421,8 +421,13 @@ async function boot() {
   $('#writerPill').className = 'pill ' + (CAPS.writer_inline ? 'ok' : 'warn');
 
   $('#siteList').innerHTML = (CAPS.sites || []).map(s => `<option value="${esc(s)}">`).join('');
+  const ENGINE_LABEL = {
+    mymemory: 'MyMemory (test, no credentials, ~1000 words/day)',
+    gemini: 'Gemini (free fallback, no extra signup)',
+    bhashini: 'Bhashini',
+  };
   $('#t-engine').innerHTML = (CAPS.engines || []).map(e =>
-    `<option value="${esc(e)}">${e === 'mymemory' ? 'MyMemory (test, no credentials)' : 'Bhashini'}</option>`).join('');
+    `<option value="${esc(e)}">${esc(ENGINE_LABEL[e] || e)}</option>`).join('');
   $('#t-langs').innerHTML = (CAPS.languages || []).map(l =>
     `<label><input type="checkbox" value="${esc(l.code)}" ${l.code === 'hi' ? 'checked' : ''}>
      ${esc(l.name)} <span class="muted deva">${esc(l.native)}</span></label>`).join('');

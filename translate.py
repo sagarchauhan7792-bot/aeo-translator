@@ -397,12 +397,120 @@ class MyMemory(Bhashini):
         return out
 
 
+class GeminiTranslate(Bhashini):
+    """Gemini as a translation engine -- the free fallback once MyMemory's
+    daily quota (roughly 1000 words) runs out.
+
+    Not a new signup: it reuses the same GEMINI_API_KEY already configured for
+    the writer backend (see writer/gemini_free.py), so this is available the
+    moment that key exists, with no additional registration. Gemini's free tier
+    is request-rate limited rather than a hard daily word cap, so it survives a
+    much larger run than MyMemory before it needs to back off.
+
+    Still not Bhashini: translation quality on Indic languages is generally
+    behind a purpose-built NMT model, and every article it touches is stamped
+    so the origin stays visible in the tracker. Selected with --engine gemini.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(user_id="gemini", api_key="none")
+        self._writer = None
+
+    def _get_writer(self):
+        if self._writer is None:
+            from writer.gemini_free import GeminiFreeWriter
+            self._writer = GeminiFreeWriter()
+        return self._writer
+
+    def require_creds(self) -> None:
+        try:
+            self._get_writer()
+        except Exception as exc:
+            raise MissingCredential(
+                "Gemini API key",
+                "translating via the free Gemini fallback engine",
+                "Get a free key at https://aistudio.google.com/apikey and save "
+                f"it to aeo-translator/gemini_api_key.txt, or set GEMINI_API_KEY. "
+                f"({exc})") from exc
+        warn("engine=gemini: free fallback, not Bhashini. Good for when "
+             "MyMemory's daily quota is exhausted or Bhashini credentials are "
+             "not yet set up; quality on Indic languages is generally behind a "
+             "purpose-built NMT model.")
+
+    def service_id(self, src: str, tgt: str) -> str:
+        return "gemini"
+
+    def _compute(self, texts: list[str], src: str, tgt: str, sid: str) -> list[str]:
+        from common import lang_by_code
+        src_name = lang_by_code(src)["name"] if src != "en" else "English"
+        tgt_name = lang_by_code(tgt)["name"] if tgt != "en" else "English"
+        writer = self._get_writer()
+
+        numbered = "\n".join(f"{i}: {t}" for i, t in enumerate(texts))
+        prompt = (
+            f"Translate each numbered segment below from {src_name} to {tgt_name}.\n"
+            "This is machine-translation output that a later editing pass will "
+            "polish for tone -- translate literally and faithfully, no commentary, "
+            "no explanation, no merging or splitting segments.\n\n"
+            "Some segments contain tokens shaped like zqNqz (the letters z, q, "
+            "then digits, then q, z). Copy those tokens through completely "
+            "unchanged, in place -- they are not words, do not translate them, "
+            "do not alter the digits inside them.\n\n"
+            f"SEGMENTS:\n{numbered}\n\n"
+            "Reply with JSON only, one entry per segment, keyed by its number as "
+            'a string: {"translations": {"0": "...", "1": "...", ...}}'
+        )
+
+        last = None
+        for attempt in range(_CFG["max_retries"]):
+            try:
+                data = writer.generate(prompt, stage="translate_mt", slug="mt",
+                                       lang=tgt, salt=f"b{len(texts)}a{attempt}")
+                mapping = data.get("translations") if isinstance(data, dict) else None
+                if not isinstance(mapping, dict):
+                    raise BhashiniError(
+                        f"gemini returned no usable translations object: "
+                        f"{str(data)[:160]}")
+                out = []
+                missing = []
+                for i in range(len(texts)):
+                    val = mapping.get(str(i))
+                    if val is None or not str(val).strip():
+                        missing.append(i)
+                        out.append(texts[i])          # keep the source rather than drop it
+                    else:
+                        out.append(str(val).strip())
+                if missing and attempt < _CFG["max_retries"] - 1:
+                    raise BhashiniError(
+                        f"gemini dropped {len(missing)}/{len(texts)} segment(s)")
+                if missing:
+                    warn(f"gemini: {len(missing)} segment(s) came back untranslated "
+                         "after retries; kept the source text for those")
+                self.calls += 1
+                return out
+            except Exception as exc:
+                last = exc
+                if attempt < _CFG["max_retries"] - 1:
+                    time.sleep(2 ** attempt)
+        raise BhashiniError(f"gemini translation failed after retries: {last}")
+
+    def translate_article(self, art: Article, tgt: str, *, src: str = "en") -> Article:
+        out = super().translate_article(art, tgt, src=src)
+        out.meta["mt_engine"] = "gemini (free fallback -- not Bhashini)"
+        return out
+
+
 _CLIENT: Bhashini | None = None
 
 
 def client(engine: str = "bhashini") -> Bhashini:
     global _CLIENT
     if _CLIENT is None or getattr(_CLIENT, "_engine", "") != engine:
-        _CLIENT = MyMemory() if engine == "mymemory" else Bhashini()
+        if engine == "mymemory":
+            _CLIENT = MyMemory()
+        elif engine == "gemini":
+            _CLIENT = GeminiTranslate()
+        else:
+            _CLIENT = Bhashini()
         _CLIENT._engine = engine
     return _CLIENT
