@@ -63,6 +63,10 @@ class ClaudeLocalWriter(Writer):
         raise WriterPending([req_path.name])
 
     # ------------------------------------------------------------- the calls
+    def generate(self, prompt: str, *, stage: str, slug: str,
+                 lang: str = "en", salt: str = "") -> dict:
+        return self._request(stage, slug, lang, prompt, salt=salt)
+
     def transcreate(self, *, lang: str, slug: str, source_md: str, mt_md: str,
                     profile: dict, keywords: list[dict], aeo_cfg: dict) -> dict:
         return self._request(

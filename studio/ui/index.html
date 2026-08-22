@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf7f2;--surface:#fff;--surface-2:#f4efe7;--ink:#1c1a17;--muted:#6b645c;
+  --faint:#938a80;--rule:#e2dad0;--rule-2:#cfc4b6;--accent:#7a4bd0;--accent-soft:#efe8fc;
+  --good:#1f7a4d;--good-soft:#e3f3ea;--bad:#a8341f;--bad-soft:#fbe8e3;
+  --warn:#8a6212;--warn-soft:#f8eed6;--info:#1f5f8a;--info-soft:#e2eef7;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#131211;--surface:#1b1a18;--surface-2:#232120;--ink:#f0ece6;--muted:#a49b91;
+  --faint:#7d746b;--rule:#302d2a;--rule-2:#443f3a;--accent:#b494f5;--accent-soft:#2a2140;
+  --good:#5cc98d;--good-soft:#16301f;--bad:#f0836a;--bad-soft:#361a14;
+  --warn:#e0b653;--warn-soft:#332711;--info:#6bb6e8;--info-soft:#12283a;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font:400 14.5px/1.55 Inter,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+:lang(hi),.deva{font-family:"Noto Sans Devanagari",Inter,sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+code{font-family:"JetBrains Mono",monospace;font-size:.87em}
+button{font:inherit}
+
+/* ---- shell ---- */
+.top{position:sticky;top:0;z-index:20;background:var(--surface);
+  border-bottom:1px solid var(--rule);padding:0 20px}
+.topin{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:22px;height:56px}
+.brand{font-family:"Instrument Serif",Georgia,serif;font-size:23px;letter-spacing:-.01em}
+nav{display:flex;gap:2px;margin-left:6px}
+nav button{background:none;border:none;padding:8px 14px;border-radius:7px;cursor:pointer;
+  color:var(--muted);font-weight:500;font-size:14px}
+nav button:hover{background:var(--surface-2);color:var(--ink)}
+nav button.on{background:var(--ink);color:var(--bg)}
+.spacer{flex:1}
+.pill{font-size:11.5px;padding:4px 10px;border-radius:20px;background:var(--surface-2);
+  color:var(--muted);white-space:nowrap;border:1px solid var(--rule)}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.ok{background:var(--good-soft);color:var(--good);border-color:transparent}
+main{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+.panel{display:none}.panel.on{display:block}
+
+/* ---- cards / forms ---- */
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+  padding:20px;margin-bottom:16px}
+h2{font-size:19px;font-weight:600;margin-bottom:5px;letter-spacing:-.01em}
+.hint{color:var(--muted);font-size:13px;margin-bottom:16px;max-width:74ch}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.f{display:flex;flex-direction:column;gap:5px}
+.f.grow{flex:1;min-width:200px}
+label{font-size:11.5px;font-weight:500;color:var(--faint);letter-spacing:.04em;
+  text-transform:uppercase}
+input,select,textarea{font:inherit;padding:8px 11px;border:1px solid var(--rule-2);
+  border-radius:8px;background:var(--bg);color:var(--ink);min-width:0}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;
+  border-color:transparent}
+textarea{min-height:130px;resize:vertical;width:100%;font-size:13.5px;line-height:1.6}
+.btn{padding:9px 16px;border-radius:8px;border:1px solid var(--rule-2);background:var(--surface);
+  color:var(--ink);cursor:pointer;font-weight:500;font-size:13.5px}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary:hover:not(:disabled){opacity:.87;color:var(--bg)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:5px 11px;font-size:12.5px}
+.langs{display:flex;flex-wrap:wrap;gap:7px}
+.langs label{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid var(--rule-2);
+  border-radius:20px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;
+  color:var(--ink);font-weight:400}
+.langs label:has(input:checked){background:var(--accent-soft);border-color:var(--accent);
+  color:var(--accent);font-weight:500}
+.langs input{min-width:auto}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+th,td{padding:9px 13px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:500 11px/1 "JetBrains Mono",monospace;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint);background:var(--surface-2);position:sticky;top:0}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td.n{font-family:"JetBrains Mono",monospace;text-align:right;white-space:nowrap;font-size:12.5px}
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;
+  white-space:nowrap}
+.chip.gap{background:var(--good-soft);color:var(--good)}
+.chip.partial{background:var(--warn-soft);color:var(--warn)}
+.chip.covered{background:var(--surface-2);color:var(--faint)}
+.chip.ok{background:var(--good-soft);color:var(--good)}
+.chip.bad{background:var(--bad-soft);color:var(--bad)}
+.chip.info{background:var(--info-soft);color:var(--info)}
+
+/* ---- job log ---- */
+.job{background:var(--surface-2);border:1px solid var(--rule);border-radius:10px;
+  padding:13px 15px;margin-bottom:14px;display:none}
+.job.on{display:block}
+.job .hd{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.dot.run{animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.dot.done{background:var(--good)}.dot.fail{background:var(--bad)}.dot.wait{background:var(--warn)}
+pre.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.6;
+  max-height:210px;overflow:auto;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+
+.banner{border-radius:10px;padding:13px 16px;margin-bottom:16px;font-size:13.5px;
+  border:1px solid transparent}
+.banner.warn{background:var(--warn-soft);color:var(--warn);border-color:var(--rule)}
+.banner.info{background:var(--info-soft);color:var(--info);border-color:var(--rule)}
+.banner b{font-weight:600}
+.banner ul{margin:7px 0 0 18px}
+
+.scores{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px}
+.sc{background:var(--surface-2);border:1px solid var(--rule);border-radius:9px;
+  padding:10px 14px;min-width:96px}
+.sc b{display:block;font-family:"Instrument Serif",serif;font-size:25px;line-height:1.1}
+.sc span{font-size:11px;color:var(--muted)}
+.sc.good b{color:var(--good)}.sc.bad b{color:var(--bad)}
+
+.preview{background:var(--bg);border:1px solid var(--rule);border-radius:10px;padding:18px 22px;
+  max-height:520px;overflow:auto}
+.preview h1{font-family:"Instrument Serif",serif;font-size:27px;font-weight:400;margin-bottom:10px}
+.preview h2{font-size:17px;margin:20px 0 7px}
+.preview h3{font-size:15px;margin:15px 0 5px;font-weight:600}
+.preview p{margin-bottom:10px;max-width:70ch}
+.preview li{margin-left:20px;margin-bottom:5px}
+.preview .ans{background:var(--accent-soft);border-left:3px solid var(--accent);
+  padding:9px 13px;border-radius:0 7px 7px 0;margin-bottom:11px;font-weight:500}
+.preview .tldr{background:var(--surface-2);border-radius:9px;padding:12px 16px;margin-bottom:14px}
+.empty{color:var(--faint);font-size:13.5px;padding:22px;text-align:center}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.split{grid-template-columns:1fr}}
+.muted{color:var(--muted)}.sm{font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="topin">
+  <div class="brand">Blog Studio</div>
+  <nav>
+    <button data-tab="ideas" class="on">Ideas</button>
+    <button data-tab="draft">Draft</button>
+    <button data-tab="translate">Translate</button>
+    <button data-tab="library">Library</button>
+  </nav>
+  <div class="spacer"></div>
+  <span class="pill" id="writerPill">…</span>
+  <span class="pill" id="packetPill" style="display:none"></span>
+</div></div>
+
+<main>
+  <div id="capBanner"></div>
+
+  <!-- ===================== IDEAS ===================== -->
+  <section class="panel on" id="p-ideas">
+    <div class="card">
+      <h2>Find something worth writing</h2>
+      <p class="hint">Expands your topic using Google autocomplete — real queries people type, not guesses — then checks each one against the site's own sitemap. On a site with a couple of thousand posts, <b>“have we already covered this?”</b> is the question that matters, and writing the same post twice splits its own rankings.</p>
+      <div class="row">
+        <div class="f grow"><label>Topic</label>
+          <input id="i-topic" placeholder="thyroid symptoms" autocomplete="off"></div>
+        <div class="f"><label>Site (for gap check)</label>
+          <input id="i-site" placeholder="hiims.in" list="siteList" autocomplete="off">
+          <datalist id="siteList"></datalist></div>
+        <div class="f"><label>Language</label>
+          <select id="i-lang"><option value="en">English</option><option value="hi">Hindi</option></select></div>
+        <div class="f"><label>Depth</label>
+          <select id="i-deep"><option value="">Standard</option><option value="1">Deep (+26 seeds, slower)</option></select></div>
+        <button class="btn primary" id="i-go">Find ideas</button>
+      </div>
+    </div>
+    <div class="job" id="j-ideas"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="i-out"></div>
+  </section>
+
+  <!-- ===================== DRAFT ===================== -->
+  <section class="panel" id="p-draft">
+    <div class="card">
+      <h2>Write the post</h2>
+      <p class="hint">Written answer-engine-first: question headings, a standalone 40–60 word answer under each, a TL;DR and an FAQ set. Structure applied afterwards gives you an FAQ bolted on the end; writing to it gives you a post where every section is independently quotable.</p>
+      <div class="row">
+        <div class="f grow"><label>Brief</label><select id="d-brief"></select></div>
+        <div class="f"><label>Site</label><input id="d-site" placeholder="hiims.in" list="siteList"></div>
+        <div class="f"><label>Length</label>
+          <select id="d-words"><option value="700">~700 words</option><option value="900" selected>~900 words</option><option value="1300">~1300 words</option></select></div>
+        <button class="btn primary" id="d-go">Write draft</button>
+      </div>
+    </div>
+    <div class="job" id="j-draft"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="d-out"></div>
+  </section>
+
+  <!-- ===================== TRANSLATE ===================== -->
+  <section class="panel" id="p-translate">
+    <div class="card">
+      <h2>Translate and score</h2>
+      <p class="hint">The same pipeline as the command line — same gate, same rewrite loop, same rails. Anything that cannot reach the threshold is marked for a human rather than shipped quietly.</p>
+      <div class="row" style="margin-bottom:14px">
+        <div class="f"><label>Source</label>
+          <select id="t-src"><option value="draft">A draft</option><option value="url">A URL</option><option value="text">Pasted text</option></select></div>
+        <div class="f grow" id="t-draftwrap"><label>Draft</label><select id="t-draft"></select></div>
+        <div class="f grow" id="t-urlwrap" style="display:none"><label>URL</label>
+          <input id="t-url" placeholder="https://hiims.in/blog/..."></div>
+        <div class="f"><label>Engine</label><select id="t-engine"></select></div>
+      </div>
+      <div class="f" id="t-textwrap" style="display:none;margin-bottom:14px">
+        <label>Paste the post (markdown or plain text)</label>
+        <textarea id="t-text" placeholder="# Title&#10;&#10;First paragraph…"></textarea></div>
+      <div class="f" style="margin-bottom:14px"><label>Languages</label>
+        <div class="langs" id="t-langs"></div></div>
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:7px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)">
+          <input type="checkbox" id="t-publish" style="min-width:auto"> Publish to Google Docs + tracker sheet</label>
+        <div class="spacer"></div>
+        <button class="btn primary" id="t-go">Run</button>
+      </div>
+    </div>
+    <div class="job" id="j-translate"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="t-out"></div>
+  </section>
+
+  <!-- ===================== LIBRARY ===================== -->
+  <section class="panel" id="p-library">
+    <div class="card">
+      <h2>Everything processed</h2>
+      <p class="hint">One row per post and language, straight from the pipeline's ledger.</p>
+      <div id="l-out"><div class="empty">Loading…</div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c;
+  if (x !== undefined) e.textContent = x; return e; };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let CAPS = null, BRIEF = null, DRAFT = null;
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.tab));
+  if (b.dataset.tab === 'library') loadLibrary();
+  if (b.dataset.tab === 'draft' || b.dataset.tab === 'translate') loadLists();
+});
+
+/* ---------- api ---------- */
+const api = (p, o) => fetch(p, o).then(r => r.json());
+
+async function boot() {
+  CAPS = await api('/api/capabilities');
+  $('#writerPill').textContent = 'writer: ' + (CAPS.writer || 'none');
+  $('#writerPill').className = 'pill ' + (CAPS.writer_inline ? 'ok' : 'warn');
+
+  $('#siteList').innerHTML = (CAPS.sites || []).map(s => `<option value="${esc(s)}">`).join('');
+  $('#t-engine').innerHTML = (CAPS.engines || []).map(e =>
+    `<option value="${esc(e)}">${e === 'mymemory' ? 'MyMemory (test, no credentials)' : 'Bhashini'}</option>`).join('');
+  $('#t-langs').innerHTML = (CAPS.languages || []).map(l =>
+    `<label><input type="checkbox" value="${esc(l.code)}" ${l.code === 'hi' ? 'checked' : ''}>
+     ${esc(l.name)} <span class="muted deva">${esc(l.native)}</span></label>`).join('');
+  $('#t-publish').disabled = !CAPS.stages.publish;
+
+  renderCaps();
+  loadLists();
+  pollPackets();
+  setInterval(pollPackets, 8000);
+}
+
+function renderCaps() {
+  const box = $('#capBanner'); box.innerHTML = '';
+  if (!CAPS.writer_inline && CAPS.writer) {
+    const b = el('div', 'banner warn');
+    b.innerHTML = `<b>The writer pauses.</b> Backend <code>claude_local</code> queues work packets
+      instead of answering inline, so Draft and the rewrite loop stop partway and wait.
+      Run <code>/aeo-rewrite</code> in Claude Code to clear them, then press the button again —
+      nothing is redone. To make every stage run in one click, add a free
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini AI Studio key</a>
+      as <code>gemini_api_key.txt</code>.`;
+    box.appendChild(b);
+  }
+  if (CAPS.missing?.length) {
+    const b = el('div', 'banner info');
+    b.innerHTML = '<b>Not configured yet</b><ul>' + CAPS.missing.map(m =>
+      `<li><b>${esc(m.what)}</b> — ${esc(m.detail)}</li>`).join('') + '</ul>';
+    box.appendChild(b);
+  }
+}
+
+async function pollPackets() {
+  try {
+    const p = await api('/api/packets');
+    const pill = $('#packetPill');
+    pill.style.display = p.length ? '' : 'none';
+    pill.className = 'pill warn';
+    pill.textContent = p.length + ' packet' + (p.length === 1 ? '' : 's') + ' waiting';
+  } catch {}
+}
+
+async function loadLists() {
+  const drafts = await api('/api/drafts');
+  const opts = drafts.map(d => `<option value="${esc(d.slug)}">${esc(d.title || d.slug)}</option>`).join('')
+    || '<option value="">(no drafts yet)</option>';
+  $('#t-draft').innerHTML = opts;
+  const briefs = BRIEF ? `<option value="__current">${esc(BRIEF.topic)} (just generated)</option>` : '';
+  $('#d-brief').innerHTML = briefs || '<option value="">(run Ideas first)</option>';
+}
+
+/* ---------- jobs ---------- */
+function runJob(kind, body, onDone) {
+  const box = $('#j-' + kind); box.classList.add('on');
+  const dot = box.querySelector('.dot'), t = box.querySelector('.t'), log = box.querySelector('.log');
+  dot.className = 'dot run'; t.textContent = 'starting…'; log.textContent = '';
+
+  return api('/api/run/' + kind, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  }).then(({job}) => new Promise(res => {
+    const tick = async () => {
+      const j = await api('/api/job/' + job);
+      log.textContent = (j.log || []).join('\n');
+      log.scrollTop = log.scrollHeight;
+      t.textContent = j.status + ' · ' + j.label;
+      if (j.status === 'running' || j.status === 'queued') return setTimeout(tick, 900);
+      dot.className = 'dot ' + (j.status === 'done' ? 'done'
+        : j.status === 'waiting_writer' ? 'wait' : 'fail');
+      pollPackets();
+      if (j.status === 'done') onDone?.(j.result);
+      else if (j.status === 'waiting_writer')
+        t.textContent = 'waiting for the writer — run /aeo-rewrite, then press the button again';
+      res(j);
+    };
+    tick();
+  }));
+}
+
+/* ---------- ideas ---------- */
+$('#i-go').onclick = () => {
+  const topic = $('#i-topic').value.trim();
+  if (!topic) return $('#i-topic').focus();
+  $('#i-go').disabled = true;
+  runJob('ideas', {topic, site: $('#i-site').value.trim(), lang: $('#i-lang').value,
+                   deep: !!$('#i-deep').value}, r => { BRIEF = r.brief; renderIdeas(r.brief); loadLists(); })
+    .finally(() => $('#i-go').disabled = false);
+};
+
+function renderIdeas(b) {
+  const out = $('#i-out'); out.innerHTML = '';
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, 'Candidates'));
+  card.appendChild(el('p', 'hint', b.notes));
+
+  const counts = {gap: 0, partial: 0, covered: 0};
+  b.candidates.forEach(c => counts[c.status]++);
+  const sc = el('div', 'scores');
+  [['gap', 'not covered — write these', 'good'], ['partial', 'related post exists', ''],
+   ['covered', 'already covered', '']].forEach(([k, lbl, cls]) => {
+    const d = el('div', 'sc ' + cls);
+    d.appendChild(el('b', null, counts[k]));
+    d.appendChild(el('span', null, lbl));
+    sc.appendChild(d);
+  });
+  card.appendChild(sc);
+
+  const tw = el('div', 'tw');
+  const hasVol = b.candidates.some(c => c.volume_in);
+  tw.innerHTML = `<table><thead><tr><th>Query</th><th>Status</th><th>Match</th>
+    ${hasVol ? '<th>Vol/mo</th>' : ''}<th>Existing post</th></tr></thead><tbody>` +
+    b.candidates.map(c => `<tr>
+      <td>${esc(c.query)}</td>
+      <td><span class="chip ${c.status}">${c.status}</span></td>
+      <td class="n">${c.match_score || ''}</td>
+      ${hasVol ? `<td class="n">${esc(c.volume_in || '')}</td>` : ''}
+      <td class="sm">${c.match_url ? `<a href="${esc(c.match_url)}" target="_blank" rel="noopener">${esc(c.match_url.replace(/^https?:\/\/[^/]+/, '').slice(0, 46))}</a>` : '<span class="muted">—</span>'}</td>
+    </tr>`).join('') + '</tbody></table>';
+  card.appendChild(tw);
+
+  const go = el('button', 'btn primary', 'Write a draft from this brief →');
+  go.style.marginTop = '14px';
+  go.onclick = () => { document.querySelector('nav button[data-tab=draft]').click();
+    $('#d-site').value = b.site || ''; };
+  card.appendChild(go);
+  out.appendChild(card);
+}
+
+/* ---------- draft ---------- */
+$('#d-go').onclick = () => {
+  if (!BRIEF) return alert('Run the Ideas step first — the draft is written from its brief.');
+  $('#d-go').disabled = true;
+  runJob('draft', {brief: BRIEF, site: $('#d-site').value.trim(),
+                   words: +$('#d-words').value}, r => { DRAFT = r; renderDraft(r); loadLists(); })
+    .finally(() => $('#d-go').disabled = false);
+};
+
+function renderDraft(r) {
+  const out = $('#d-out'); out.innerHTML = '';
+  const rep = r.report, art = r.article;
+
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, art.title));
+
+  const sc = el('div', 'scores');
+  [[rep.score, rep.label, rep.passed], [rep.aeo, 'AEO structure', rep.aeo >= 70],
+   [rep.burstiness, 'rhythm', rep.burstiness >= 60], [rep.review, 'editor review', rep.review >= 75],
+   [rep.words, 'words', true]].forEach(([v, l, ok]) => {
+    const d = el('div', 'sc ' + (l === 'words' ? '' : ok ? 'good' : 'bad'));
+    d.appendChild(el('b', null, v)); d.appendChild(el('span', null, l)); sc.appendChild(d);
+  });
+  card.appendChild(sc);
+
+  const cav = el('div', 'banner info');
+  cav.innerHTML = `<b>This is not the Indic AI-likeness score.</b> ${esc(rep.caveat)}`;
+  card.appendChild(cav);
+
+  if (r.claims?.length) {
+    const cl = el('div', 'banner warn');
+    cl.innerHTML = `<b>${r.claims.length} figure${r.claims.length === 1 ? '' : 's'} to verify.</b>
+      A draft has no source document, so nothing can be checked automatically. Confirm each
+      against a real source before publishing.<ul>` +
+      r.claims.slice(0, 8).map(c => `<li><code>${esc(c.value)}</code> — ${esc(c.context || '')}</li>`).join('') + '</ul>';
+    card.appendChild(cl);
+  }
+
+  const bad = (rep.flags || []).filter(f => f.severity !== 'note');
+  if (bad.length) {
+    const fl = el('div', 'tw'); fl.style.marginBottom = '14px';
+    fl.innerHTML = `<table><thead><tr><th>Severity</th><th>Issue</th><th>Detail</th></tr></thead><tbody>` +
+      bad.slice(0, 14).map(f => `<tr><td><span class="chip ${f.severity === 'error' ? 'bad' : 'info'}">${esc(f.severity)}</span></td>
+        <td class="sm">${esc(f.kind)}</td><td class="sm">${esc(f.detail)}</td></tr>`).join('') + '</tbody></table>';
+    card.appendChild(fl);
+  }
+
+  card.appendChild(renderArticle(art));
+  const go = el('button', 'btn primary', 'Translate this draft →');
+  go.style.marginTop = '14px';
+  go.onclick = async () => { await loadLists();
+    document.querySelector('nav button[data-tab=translate]').click();
+    $('#t-src').value = 'draft'; $('#t-src').dispatchEvent(new Event('change'));
+    $('#t-draft').value = r.slug; };
+  card.appendChild(go);
+  out.appendChild(card);
+}
+
+function renderArticle(art) {
+  const p = el('div', 'preview');
+  p.appendChild(el('h1', null, art.title));
+  if (art.meta_description) {
+    const m = el('p', 'muted sm', art.meta_description); p.appendChild(m);
+  }
+  let tldr = null;
+  (art.blocks || []).forEach(b => {
+    if (b.type === 'tldr') {
+      if (!tldr) { tldr = el('ul', 'tldr'); p.appendChild(tldr); }
+      tldr.appendChild(el('li', null, b.text)); return;
+    }
+    tldr = null;
+    if (b.type === 'h2') p.appendChild(el('h2', null, b.text));
+    else if (b.type === 'h3') p.appendChild(el('h3', null, b.text));
+    else if (b.type === 'answer') p.appendChild(el('div', 'ans', b.text));
+    else if (b.type === 'li') p.appendChild(el('li', null, b.text));
+    else p.appendChild(el('p', null, b.text));
+  });
+  if (art.faqs?.length) {
+    p.appendChild(el('h2', null, 'FAQ'));
+    art.faqs.forEach(f => { p.appendChild(el('h3', null, f.q)); p.appendChild(el('p', null, f.a)); });
+  }
+  if (art.lang && art.lang !== 'en' && art.lang !== 'hinglish') p.lang = art.lang;
+  return p;
+}
+
+/* ---------- translate ---------- */
+$('#t-src').onchange = () => {
+  const v = $('#t-src').value;
+  $('#t-draftwrap').style.display = v === 'draft' ? '' : 'none';
+  $('#t-urlwrap').style.display = v === 'url' ? '' : 'none';
+  $('#t-textwrap').style.display = v === 'text' ? '' : 'none';
+};
+
+$('#t-go').onclick = () => {
+  const langs = [...document.querySelectorAll('#t-langs input:checked')].map(i => i.value);
+  if (!langs.length) return alert('Pick at least one language.');
+  const src = $('#t-src').value;
+  const body = {langs, engine: $('#t-engine').value, publish: $('#t-publish').checked};
+  if (src === 'draft') body.slug = $('#t-draft').value;
+  if (src === 'url') body.url = $('#t-url').value.trim();
+  if (src === 'text') body.text = $('#t-text').value;
+  if (src === 'url' && !body.url) return $('#t-url').focus();
+  if (src === 'text' && !body.text.trim()) return $('#t-text').focus();
+
+  $('#t-go').disabled = true;
+  runJob('translate', body, r => renderResults(r.results))
+    .finally(() => $('#t-go').disabled = false);
+};
+
+function renderResults(rows) {
+  const out = $('#t-out'); out.innerHTML = '';
+  if (!rows?.length) { out.innerHTML = '<div class="card"><div class="empty">No results.</div></div>'; return; }
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, 'Results'));
+  const tw = el('div', 'tw');
+  tw.innerHTML = `<table><thead><tr><th>Lang</th><th>Status</th><th>AI-likeness</th><th>Human</th>
+    <th>AEO</th><th>Fidelity</th><th>Passes</th><th>Words</th><th>Doc</th></tr></thead><tbody>` +
+    rows.map(r => `<tr>
+      <td>${esc(r.lang)}</td>
+      <td><span class="chip ${r.status === 'published' || r.status === 'scored' ? 'ok' : 'bad'}">${esc(r.status)}</span></td>
+      <td class="n">${r.ai_pct ?? ''}%</td><td class="n">${r.human_likeness ?? ''}</td>
+      <td class="n">${r.aeo ?? ''}</td><td class="n">${r.fidelity ?? ''}</td>
+      <td class="n">${r.passes ?? 0}</td><td class="n">${r.words ?? ''}</td>
+      <td class="sm">${r.doc_url ? `<a href="${esc(r.doc_url)}" target="_blank" rel="noopener">open</a>` : '<span class="muted">—</span>'}</td>
+    </tr>`).join('') + '</tbody></table>';
+  card.appendChild(tw);
+  const notes = rows.filter(r => r.error);
+  if (notes.length) {
+    const b = el('div', 'banner warn'); b.style.marginTop = '13px';
+    b.innerHTML = '<b>Needs a human</b><ul>' + notes.map(r =>
+      `<li><b>${esc(r.lang)}</b> — ${esc(r.error)}</li>`).join('') + '</ul>';
+    card.appendChild(b);
+  }
+  out.appendChild(card);
+}
+
+/* ---------- library ---------- */
+async function loadLibrary() {
+  const rows = await api('/api/library');
+  const out = $('#l-out');
+  if (!rows.length) { out.innerHTML = '<div class="empty">Nothing processed yet.</div>'; return; }
+  out.innerHTML = `<div class="tw"><table><thead><tr><th>Post</th><th>Lang</th><th>Status</th>
+    <th>AI%</th><th>AEO</th><th>Words</th><th>Doc</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td class="sm">${esc(r.slug || '')}</td><td>${esc(r.lang)}</td>
+      <td><span class="chip ${r.status === 'published' || r.status === 'scored' ? 'ok' : 'bad'}">${esc(r.status)}</span></td>
+      <td class="n">${r.ai_pct ?? ''}</td><td class="n">${r.aeo ?? ''}</td><td class="n">${r.words ?? ''}</td>
+      <td class="sm">${r.doc_url ? `<a href="${esc(r.doc_url)}" target="_blank" rel="noopener">open</a>` : '—'}</td>
+    </tr>`).join('') + '</tbody></table></div>';
+}
+
+boot();
+</script>
+</body>
+</html>

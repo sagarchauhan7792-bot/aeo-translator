@@ -269,6 +269,16 @@ class Writer:
     """Interface every backend implements."""
     name: str = "base"
 
+    def generate(self, prompt: str, *, stage: str, slug: str,
+                 lang: str = "en", salt: str = "") -> dict:
+        """Run an arbitrary prompt through this backend and return parsed JSON.
+
+        Used by Blog Studio for stages the pipeline itself does not have
+        (idea briefs, English drafting). Backends implement transport only --
+        the prompt is the caller's.
+        """
+        raise NotImplementedError
+
     def transcreate(self, **kwargs) -> dict:
         raise NotImplementedError
 

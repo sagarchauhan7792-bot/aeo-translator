@@ -141,6 +141,18 @@ is a reliable source of silent bugs.
 
 ---
 
+## Blog Studio
+
+```bash
+python -m studio                 # or blog.bat
+python -m studio --port 9000     # if 8765 is taken (it also auto-picks the next free port)
+```
+
+The app reports on load which credentials it found and which stages are
+therefore available. With the default `claude_local` writer it queues packets
+and pauses at the Draft stage; a free Gemini key makes every stage run in one
+click.
+
 ## Verifying an install
 
 ```bash

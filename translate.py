@@ -361,6 +361,15 @@ class MyMemory(Bhashini):
             for attempt in range(_CFG["max_retries"]):
                 try:
                     resp = requests.get(self.ENDPOINT, params=params, timeout=60)
+                    if resp.status_code == 429:
+                        # Not worth retrying: the anonymous tier is a daily word
+                        # budget, not a rate limit that clears in seconds.
+                        raise BhashiniError(
+                            "MyMemory's free daily quota is used up. This is the "
+                            "TEST engine, not Bhashini -- its anonymous tier is "
+                            "roughly 1000 words a day. Options: set MYMEMORY_EMAIL "
+                            "to raise it, wait for the daily reset, or add Bhashini "
+                            "credentials and switch the engine to bhashini.")
                     resp.raise_for_status()
                     data = resp.json()
                     if data.get("responseStatus") != 200:
@@ -371,6 +380,8 @@ class MyMemory(Bhashini):
                     out.append((data["responseData"]["translatedText"] or "").strip())
                     self.calls += 1
                     break
+                except BhashiniError:
+                    raise                      # quota is terminal, not transient
                 except Exception as exc:
                     last = exc
                     if attempt < _CFG["max_retries"] - 1:

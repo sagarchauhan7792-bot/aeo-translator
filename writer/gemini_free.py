@@ -83,6 +83,11 @@ class GeminiFreeWriter(Writer):
         raise RuntimeError(f"gemini call failed after {retries} attempts: {last}")
 
     # -------------------------------------------------------------- the calls
+    def generate(self, prompt: str, *, stage: str, slug: str,
+                 lang: str = "en", salt: str = "") -> dict:
+        log(f"gemini({self.model}): {stage} {lang}", indent=1)
+        return self._call(prompt)
+
     def transcreate(self, *, lang: str, slug: str, source_md: str, mt_md: str,
                     profile: dict, keywords: list[dict], aeo_cfg: dict) -> dict:
         log(f"gemini({self.model}): transcreate {lang}", indent=1)

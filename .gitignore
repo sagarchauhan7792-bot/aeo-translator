@@ -23,3 +23,7 @@ __pycache__/
 # third-party journalism and encyclopedia text held locally for scoring tests.
 # Rebuild them with:  python calibrate.py --fetch --build-mt-free
 samples/
+
+# Generated working files (client content)
+drafts/
+briefs/

@@ -99,6 +99,41 @@ relative clauses 0.4 vs 3.7 · comma density 22 vs 72 · sentence-length CV
 
 ---
 
+## Blog Studio — the daily app
+
+A locally-run browser app over the same pipeline, covering the whole blogging
+day rather than just the translation step:
+
+```
+idea  ->  draft (English, AEO-structured)  ->  translate  ->  Google Doc + sheet
+```
+
+```bash
+python -m studio          # or double-click blog.bat
+```
+
+Opens on http://127.0.0.1:8765 (localhost only -- it can spend API quota and
+write to Drive, so it is not exposed to the network). Four tabs:
+
+- **Ideas** — expands a topic through Google autocomplete, then checks every
+  candidate against the site's own sitemap and flags it *covered* / *partial* /
+  *gap*. On a site with a couple of thousand posts, "have we already covered
+  this?" matters more than search volume, and writing the same post twice splits
+  its own rankings. People Also Ask is deliberately not used: google.com/search
+  returns a JavaScript-only shell to a plain HTTP client, with no question data
+  in it at all.
+- **Draft** — brief to an English post written answer-engine-first. Every figure
+  it writes is surfaced for you to verify, because a draft has no source
+  document and therefore nothing the fidelity check can compare against.
+- **Translate** — the pipeline below, unchanged.
+- **Library** — everything processed, with scores and Doc links.
+
+The English draft is scored on **AEO + rhythm**, not AI-likeness. Three of the
+six sub-scores below measure Indic-specific phenomena and are undefined on
+English, and the calibration behind the proxy was measured on Hindi. The app
+says so on screen rather than reusing a number outside the range it was
+measured in.
+
 ## Quickstart
 
 ```bash
