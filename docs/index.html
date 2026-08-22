@@ -181,9 +181,10 @@ footer p{max-width:68ch}
   <div class="wrap">
     <div class="eyebrow">Open source · Python · MIT</div>
     <h1>aeo-translator</h1>
-    <p class="lede">Takes a blog post, renders it into <strong>eight Indian languages plus Hinglish</strong>, restructures each one for answer engines, and refuses to publish anything that still reads like machine output.</p>
+    <p class="lede">A blogging tool for Indian regional search. Finds a topic worth writing, drafts it, renders it into <strong>eight Indian languages plus Hinglish</strong>, restructures each one for answer engines, and refuses to publish anything that still reads like machine output.</p>
     <div class="cta">
       <a class="btn primary" href="https://github.com/sagarchauhan7792-bot/aeo-translator">View on GitHub</a>
+      <a class="btn" href="#studio">Blog Studio</a>
       <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">Setup guide</a>
       <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/calibrate.py">Calibration harness</a>
     </div>
@@ -191,7 +192,7 @@ footer p{max-width:68ch}
       <div class="stat"><span class="n">9</span><span class="l">languages, incl. Roman-script Hinglish</span></div>
       <div class="stat"><span class="n">1.00</span><span class="l">AUC separating native prose from machine output</span></div>
       <div class="stat"><span class="n">3.2</span><span class="l">Cohen's <em>d</em> — the gate is not a coin flip</span></div>
-      <div class="stat"><span class="n">3</span><span class="l">assumptions calibration proved wrong</span></div>
+      <div class="stat"><span class="n">5</span><span class="l">assumptions the testing proved wrong</span></div>
     </div>
   </div>
 </header>
@@ -214,6 +215,54 @@ footer p{max-width:68ch}
       <h3>Bhashini translates. It cannot rewrite.</h3>
       <p><a href="https://bhashini.gov.in">Bhashini</a> is the right engine for these languages — free, government-run, purpose-built for the 22 scheduled languages. But it is a <em>translation</em> API. It has no ability to rewrite for tone, restructure a document for answer engines, or take feedback and improve, which is precisely what a "rewrite until it stops sounding machine-made" loop requires.</p>
       <p>So the two jobs are split. Bhashini does translation and back-translation. A separate pluggable <strong>writer backend</strong> does transcreation, humanising, restructuring and review — either free inside a Claude Code session, or on Google AI Studio's free tier for unattended runs.</p>
+    </div>
+  </div>
+</section>
+
+<section id="studio">
+  <div class="wrap">
+    <h2>Blog Studio — the app you actually open</h2>
+    <p class="sub">The pipeline above is a command-line job that pauses mid-run. Fine for a batch, wrong for something you use every morning. Blog Studio wraps it in a local browser app covering the whole blogging day.</p>
+
+<pre>python -m studio          <span class="c"># or double-click blog.bat</span></pre>
+
+    <p>Runs on <code>127.0.0.1</code> only. It holds API credentials and can write to your Google Drive, so it is not reachable from the network and should not be.</p>
+
+    <div class="pipe" style="margin-top:22px">
+      <div class="step w"><b>Ideas</b><span>topic → what to write</span></div>
+      <div class="step w"><b>Draft</b><span>English, AEO-first</span></div>
+      <div class="step g"><b>Translate</b><span>9 variants, scored</span></div>
+      <div class="step g"><b>Library</b><span>everything, with Doc links</span></div>
+    </div>
+
+    <h3>Ideas: the tab that earns its place</h3>
+    <p>On a site with a couple of thousand posts, the useful daily question is not “what has search volume”, it is <strong>“have we already covered this?”</strong> — because writing the same post twice splits its own rankings. Every candidate is checked against the site's own sitemap and flagged.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Query</th><th>Verdict</th><th class="num">Score</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>diabetes symptoms</td><td><span class="tag no">covered</span></td><td class="num">1.00</td><td>an existing post says exactly this</td></tr>
+          <tr><td>diabetes symptoms in women</td><td><span class="tag mid">partial</span></td><td class="num">0.80</td><td>real angle the existing post lacks</td></tr>
+          <tr><td>thyroid symptoms</td><td><span class="tag mid">partial</span></td><td class="num">0.80</td><td>nearest post is about thyroid <em>cancer</em></td></tr>
+          <tr><td>best pizza recipe naples</td><td><span class="tag ok">gap</span></td><td class="num">0.00</td><td>nothing on the site is close</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>That third row is a bug the testing caught. The first version scored coverage in one direction only — “is the query inside the slug” — so <em>thyroid symptoms</em> fitted neatly inside <em>thyroid cancer symptoms</em> and scored a perfect 1.00, marking a different condition as already covered. It now scores F1 over content words, which penalises a mismatch in either direction.</p>
+
+    <div class="note">
+      <h3>People Also Ask is not used, because it does not work</h3>
+      <p>The obvious source for “questions people ask” is Google's PAA box. It was tested rather than assumed: <code>google.com/search</code> returns a JavaScript-only shell to a plain HTTP client — no <code>data-q</code> attributes, no embedded question JSON, and not even the string “People also ask” anywhere in the 91KB response. Scraping it would need a headless browser and would break the first time Google changed its markup.</p>
+      <p>Autocomplete is a documented endpoint returning the same class of signal, so the Ideas tab expands topics through that instead — with question prefixes, modifiers and an optional alphabet sweep.</p>
+    </div>
+
+    <h3>Draft, and a number that is deliberately not reused</h3>
+    <p>Briefs become English posts written answer-engine-first: question headings, a standalone 40–60 word answer under each, a TL;DR, an FAQ set. Structure applied afterwards gives you an FAQ bolted on the end; writing to it gives you a post where every section is independently quotable.</p>
+    <div class="note warn">
+      <h3>English drafts are scored “AEO + rhythm”, not AI-likeness</h3>
+      <p>Three of the six sub-scores below — translationese, register, script purity — measure Indic-specific phenomena that are undefined on English, and the calibration behind the AI-likeness proxy was measured on Hindi. Running it on English would produce a number that looks like the Hindi one, sits in the same column, and means something else entirely.</p>
+      <p>Drafts are therefore scored on structure, sentence rhythm, an independent editor pass and the safety rails, under a different name. The app states this on screen, next to the score.</p>
+      <p>A draft also has no source document, so the fidelity check that protects a translation has nothing to compare against. Every figure a draft contains is listed for a human to verify instead of being silently trusted.</p>
     </div>
   </div>
 </section>
@@ -291,6 +340,7 @@ footer p{max-width:68ch}
       </table>
     </div>
     <p>Every falsified rule stays in the source as a documented failure rather than being quietly deleted — the reasoning that produced them is the reasoning that will produce the next wrong rule.</p>
+    <p>Two more went the same way while building <a href="#studio">Blog Studio</a>: that gap analysis could score coverage in one direction (it rated a query about <em>thyroid symptoms</em> as fully covered by a post about <em>thyroid cancer</em>), and that Google's People Also Ask box could be read from a plain HTTP request (it cannot — the response carries no question data at all). Five wrong assumptions, all of which looked obviously correct until something measured them.</p>
   </div>
 </section>
 
@@ -339,6 +389,10 @@ footer p{max-width:68ch}
           <tr><td>Pipeline, English → Hindi</td><td><span class="tag ok">verified</span></td><td>8.0% AI-likeness, fidelity 100, AEO 100, no rewrite needed</td></tr>
           <tr><td>Rewrite loop</td><td><span class="tag ok">verified</span></td><td>12 control-flow checks — fires, improves, rejects fact-breaking passes, never loops</td></tr>
           <tr><td>Fidelity guards</td><td><span class="tag ok">verified</span></td><td>dosage tampering, dropped brand, inflated claim, deleted hedge — all blocked</td></tr>
+          <tr><td>Studio · Ideas</td><td><span class="tag ok">verified</span></td><td>40 candidates against 2,434 existing posts; covered / partial / gap all classify correctly</td></tr>
+          <tr><td>Studio · Draft</td><td><span class="tag ok">verified</span></td><td>1,041 words, 6 question headings, every answer block inside the 40–60 word band, 8 FAQs</td></tr>
+          <tr><td>Studio · pause &amp; resume</td><td><span class="tag ok">verified</span></td><td>paused for each work packet, resumed with nothing redone</td></tr>
+          <tr><td>Studio · Translate</td><td><span class="tag mid">partial</span></td><td>Hindi translation completed (1,381 words); the free test engine's daily quota ran out during back-translation</td></tr>
           <tr><td>Bhashini API</td><td><span class="tag no">untested</span></td><td>written to the documented ULCA protocol, never actually called — awaiting free registration</td></tr>
           <tr><td>Google Docs + Sheets</td><td><span class="tag no">untested</span></td><td>awaiting OAuth credentials</td></tr>
           <tr><td>Languages beyond Hindi</td><td><span class="tag mid">partial</span></td><td>all nine paths resolve; scoring bands were fitted on Hindi only</td></tr>
@@ -347,7 +401,7 @@ footer p{max-width:68ch}
     </div>
     <div class="note warn">
       <h3>This page is documentation, not a running service</h3>
-      <p>aeo-translator is a Python command-line pipeline. It needs API credentials and a writer backend, so there is no hosted version that translates a URL you paste in. Clone the repo and follow <a href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">SETUP.md</a> to run it.</p>
+      <p>Blog Studio runs on your own machine, at <code>127.0.0.1:8765</code>. It holds API credentials and can write to your Google Drive, so there is deliberately no hosted version that translates a URL you paste in here. Clone the repo and follow <a href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">SETUP.md</a>.</p>
     </div>
   </div>
 </section>
@@ -355,7 +409,10 @@ footer p{max-width:68ch}
 <section>
   <div class="wrap">
     <h2>Running it</h2>
-<pre><span class="c"># one live post, Hindi, local files only</span>
+<pre><span class="c"># the app: idea -> draft -> translate -> publish, in a browser</span>
+python -m studio
+
+<span class="c"># or the pipeline directly. one live post, Hindi, local files only</span>
 python run.py --url https://example.com/blog/post/ --langs hi --no-publish
 
 <span class="c"># a sitemap, five posts, three languages, published to Docs + Sheet</span>
