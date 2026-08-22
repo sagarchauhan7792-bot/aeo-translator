@@ -249,6 +249,68 @@ font-family:ui-monospace,Consolas,monospace}h1{font-size:22px;margin-bottom:12px
 <div class="warn">Blog Studio is reachable from outside this machine but has no
 login. It holds live API keys and can spend your quota, so it will not serve
 anything until a password exists.</div>
-<p>Set one, then restart:</p>
+<p>Whoever owns the machine it runs on must set one &mdash; either by opening
+<code>http://localhost:8765</code> there, or by running:</p>
 <p><code>python -m studio --set-password</code></p>
 </body></html>"""
+
+
+# The same job, done in the browser. Only ever served to a request that came
+# from the machine itself: a public visitor gets SETUP_PAGE instead, or the
+# first stranger to find the URL would choose the password.
+FIRST_RUN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blog Studio &mdash; choose a password</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#faf7f2;--surface:#fff;--ink:#1c1a17;--muted:#6b645c;--rule:#e2dad0;
+  --rule2:#cfc4b6;--accent:#7a4bd0;--bad:#a8341f;--bad-soft:#fbe8e3;
+  --warn:#8a6212;--warn-soft:#f8eed6}
+@media(prefers-color-scheme:dark){:root{--bg:#131211;--surface:#1b1a18;--ink:#f0ece6;
+  --muted:#a49b91;--rule:#302d2a;--rule2:#443f3a;--accent:#b494f5;--bad:#f0836a;
+  --bad-soft:#361a14;--warn:#e0b653;--warn-soft:#332711}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:400 15px/1.6 Inter,-apple-system,sans-serif;
+  min-height:100vh;display:grid;place-items:center;padding:24px}
+.box{background:var(--surface);border:1px solid var(--rule);border-radius:14px;
+  padding:34px;width:100%;max-width:430px}
+h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;font-size:29px;margin-bottom:6px}
+p.sub{color:var(--muted);font-size:13.5px;margin-bottom:20px}
+label{display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);margin:14px 0 5px}
+input{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--rule2);
+  border-radius:8px;background:var(--bg);color:var(--ink)}
+input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+button{width:100%;margin-top:20px;padding:11px;border-radius:8px;border:none;
+  background:var(--ink);color:var(--bg);font:500 15px Inter,sans-serif;cursor:pointer}
+button:hover{opacity:.88}
+.err{background:var(--bad-soft);color:var(--bad);border-radius:8px;padding:10px 13px;
+  font-size:13px;margin-top:14px}
+.note{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:12px 14px;
+  font-size:12.5px;margin-top:18px;line-height:1.5}
+</style></head><body>
+<form class="box" method="POST" action="/setup">
+  <h1>Choose a password</h1>
+  <p class="sub">Blog Studio has no password yet, so it will not accept anyone
+  from outside this machine.</p>
+  __ERROR__
+  <label for="password">Shared password</label>
+  <input id="password" name="password" type="password" autocomplete="new-password" required autofocus>
+  <label for="confirm">Again</label>
+  <input id="confirm" name="confirm" type="password" autocomplete="new-password" required>
+  <button type="submit">Set it</button>
+  <div class="note">Everyone at Revnox who signs in shares one workspace &mdash;
+  the same crawls, drafts and reports, and the same API quota. This is not
+  per-user accounts, so do not give the link to clients.</div>
+</form></body></html>"""
+
+
+def first_run_page(error: str = "") -> bytes:
+    block = f'<div class="err">{error}</div>' if error else ""
+    return FIRST_RUN_PAGE.replace("__ERROR__", block).encode("utf-8")
+
+
+def is_local_request(client_addr: str) -> bool:
+    """Only the machine itself may choose the first password."""
+    return client_addr in ("127.0.0.1", "::1", "localhost")

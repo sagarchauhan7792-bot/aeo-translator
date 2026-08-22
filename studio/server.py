@@ -496,6 +496,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.require_auth:
             return True
         if not auth.is_configured():
+            # From this machine, offer to set the password rather than telling
+            # the owner to go and use a terminal.
+            if auth.is_local_request(self.client_address[0]) and not self.path.startswith("/api/"):
+                return self._redirect("/setup") or False
             self._send(503, auth.SETUP_PAGE.encode("utf-8"), "text/html; charset=utf-8")
             return False
         if self._session():
@@ -540,10 +544,20 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
 
+        if path == "/setup":
+            if auth.is_configured():
+                return self._redirect("/login")
+            if not auth.is_local_request(self.client_address[0]):
+                return self._send(503, auth.SETUP_PAGE.encode("utf-8"),
+                                  "text/html; charset=utf-8")
+            return self._send(200, auth.first_run_page(), "text/html; charset=utf-8")
+
         if path == "/login":
             if not self.require_auth:
                 return self._redirect("/")
             if not auth.is_configured():
+                if auth.is_local_request(self.client_address[0]):
+                    return self._redirect("/setup")
                 return self._send(503, auth.SETUP_PAGE.encode("utf-8"),
                                   "text/html; charset=utf-8")
             return self._send(200, auth.login_page(), "text/html; charset=utf-8")
@@ -626,6 +640,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urllib.parse.urlparse(self.path).path
 
+        if path == "/setup":
+            return self._do_setup()
+
         if path == "/login":
             return self._do_login()
 
@@ -656,6 +673,37 @@ class Handler(BaseHTTPRequestHandler):
     def _redirect(self, to: str) -> None:
         self.send_response(302)
         self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _do_setup(self) -> None:
+        """First-run password, from this machine only."""
+        if auth.is_configured():
+            return self._redirect("/login")
+        if not auth.is_local_request(self.client_address[0]):
+            return self._send(403, auth.SETUP_PAGE.encode("utf-8"),
+                              "text/html; charset=utf-8")
+
+        n = int(self.headers.get("Content-Length") or 0)
+        form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace") if n else "")
+        pw = (form.get("password") or [""])[0]
+        again = (form.get("confirm") or [""])[0]
+
+        if pw != again:
+            return self._send(400, auth.first_run_page("Those do not match."),
+                              "text/html; charset=utf-8")
+        try:
+            auth.set_password(pw)
+        except ValueError as exc:
+            return self._send(400, auth.first_run_page(str(exc)),
+                              "text/html; charset=utf-8")
+
+        Handler.require_auth = True
+        log("auth: password set from the browser")
+        self.send_response(302)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie",
+                         auth.cookie_header(auth.issue("owner"), secure=self.behind_tls))
         self.send_header("Content-Length", "0")
         self.end_headers()
 
