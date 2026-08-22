@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aeo-translator — Indic blog translation for answer engines</title>
+<meta name="description" content="Translate blogs into 8 Indian languages plus Hinglish, restructured for answer engines, with a quality gate calibrated against real text at AUC 1.00.">
+<meta property="og:title" content="aeo-translator">
+<meta property="og:description" content="Indic blog translation for answer engines, with a calibrated quality gate.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf7f2; --surface:#ffffff; --surface-2:#f4efe7;
+  --ink:#1c1a17; --muted:#6b645c; --faint:#938a80;
+  --rule:#e2dad0; --rule-strong:#cfc4b6;
+  --accent:#7a4bd0; --accent-soft:#efe8fc;
+  --good:#1f7a4d; --good-soft:#e3f3ea;
+  --bad:#a8341f; --bad-soft:#fbe8e3;
+  --warn:#8a6212; --warn-soft:#f8eed6;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131211; --surface:#1b1a18; --surface-2:#232120;
+    --ink:#f0ece6; --muted:#a49b91; --faint:#7d746b;
+    --rule:#302d2a; --rule-strong:#443f3a;
+    --accent:#b494f5; --accent-soft:#2a2140;
+    --good:#5cc98d; --good-soft:#16301f;
+    --bad:#f0836a; --bad-soft:#361a14;
+    --warn:#e0b653; --warn-soft:#332711;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131211; --surface:#1b1a18; --surface-2:#232120;
+  --ink:#f0ece6; --muted:#a49b91; --faint:#7d746b;
+  --rule:#302d2a; --rule-strong:#443f3a;
+  --accent:#b494f5; --accent-soft:#2a2140;
+  --good:#5cc98d; --good-soft:#16301f;
+  --bad:#f0836a; --bad-soft:#361a14;
+  --warn:#e0b653; --warn-soft:#332711;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font:400 16.5px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+a:hover{border-bottom-color:var(--accent)}
+code,kbd{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.88em}
+h1,h2,h3{line-height:1.2;font-weight:600;letter-spacing:-.015em}
+
+/* ---------- hero ---------- */
+header{padding:76px 0 52px;border-bottom:1px solid var(--rule)}
+.eyebrow{
+  font:500 12px/1 "JetBrains Mono",monospace;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:20px
+}
+h1{
+  font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+  font-size:clamp(42px,7.5vw,68px);letter-spacing:-.02em;margin-bottom:18px
+}
+.lede{font-size:clamp(17px,2.3vw,20px);color:var(--muted);max-width:60ch}
+.lede strong{color:var(--ink);font-weight:500}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:32px}
+.btn{
+  display:inline-block;padding:10px 18px;border-radius:8px;border:1px solid var(--rule-strong);
+  font-size:14.5px;font-weight:500;color:var(--ink);background:var(--surface);
+  border-bottom-width:1px
+}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary:hover{opacity:.86;color:var(--bg)}
+
+/* ---------- stat row ---------- */
+.stats{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:1px;background:var(--rule);border:1px solid var(--rule);
+  border-radius:12px;overflow:hidden;margin:44px 0 0
+}
+.stat{background:var(--surface);padding:20px 18px}
+.stat .n{
+  font-family:"Instrument Serif",Georgia,serif;font-size:34px;line-height:1;
+  letter-spacing:-.02em;display:block;margin-bottom:7px
+}
+.stat .l{font-size:12.5px;color:var(--muted);line-height:1.45}
+
+section{padding:62px 0;border-bottom:1px solid var(--rule)}
+section h2{font-size:clamp(24px,3.6vw,31px);margin-bottom:14px}
+section h2 + .sub{color:var(--muted);max-width:62ch;margin-bottom:32px}
+h3{font-size:17px;margin:34px 0 10px}
+p{margin-bottom:15px;max-width:68ch}
+ul{margin:0 0 15px 20px;max-width:68ch}
+li{margin-bottom:7px}
+
+/* ---------- pipeline ---------- */
+.pipe{
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;
+  margin:8px 0 28px;font-size:13.5px
+}
+.step{
+  flex:1 1 108px;background:var(--surface);border:1px solid var(--rule);
+  border-radius:9px;padding:13px 12px;position:relative
+}
+.step b{display:block;font-weight:600;font-size:13.5px;margin-bottom:3px}
+.step span{color:var(--faint);font-size:11.5px;line-height:1.4;display:block}
+.step.w{border-color:var(--accent);background:var(--accent-soft)}
+.step.g{border-color:var(--rule-strong)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin:0 0 22px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:520px}
+th,td{padding:11px 15px;text-align:left;border-bottom:1px solid var(--rule)}
+th{
+  font:500 11.5px/1 "JetBrains Mono",monospace;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);background:var(--surface-2)
+}
+tbody tr:last-child td{border-bottom:none}
+td.num{font-family:"JetBrains Mono",monospace;font-size:13px;text-align:right;white-space:nowrap}
+.tag{
+  display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;
+  font-weight:500;white-space:nowrap
+}
+.tag.ok{background:var(--good-soft);color:var(--good)}
+.tag.no{background:var(--bad-soft);color:var(--bad)}
+.tag.mid{background:var(--warn-soft);color:var(--warn)}
+
+/* ---------- callout ---------- */
+.note{
+  background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:20px 22px;margin:0 0 22px
+}
+.note.warn{border-left-color:var(--warn)}
+.note h3{margin:0 0 8px;font-size:16px}
+.note p:last-child{margin-bottom:0}
+
+/* ---------- falsified cards ---------- */
+.cards{display:grid;gap:12px;margin-bottom:26px}
+.card{
+  background:var(--surface);border:1px solid var(--rule);border-radius:11px;
+  padding:20px 22px
+}
+.card .claim{
+  font-family:"Instrument Serif",Georgia,serif;font-style:italic;
+  font-size:19px;line-height:1.35;margin-bottom:11px;color:var(--muted)
+}
+.card .verdict{font-size:14.5px}
+.card .verdict b{color:var(--bad);font-weight:600}
+.measured{
+  font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--faint);
+  margin-top:10px;padding-top:10px;border-top:1px dashed var(--rule-strong)
+}
+
+pre{
+  background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;overflow-x:auto;font-size:13px;line-height:1.6;margin-bottom:18px
+}
+pre .c{color:var(--faint)}
+
+footer{padding:44px 0 64px;color:var(--faint);font-size:14px}
+footer p{max-width:68ch}
+@media(max-width:640px){
+  header{padding:52px 0 40px}
+  section{padding:46px 0}
+  .step{flex:1 1 100%}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Open source · Python · MIT</div>
+    <h1>aeo-translator</h1>
+    <p class="lede">Takes a blog post, renders it into <strong>eight Indian languages plus Hinglish</strong>, restructures each one for answer engines, and refuses to publish anything that still reads like machine output.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/sagarchauhan7792-bot/aeo-translator">View on GitHub</a>
+      <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">Setup guide</a>
+      <a class="btn" href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/calibrate.py">Calibration harness</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="n">9</span><span class="l">languages, incl. Roman-script Hinglish</span></div>
+      <div class="stat"><span class="n">1.00</span><span class="l">AUC separating native prose from machine output</span></div>
+      <div class="stat"><span class="n">3.2</span><span class="l">Cohen's <em>d</em> — the gate is not a coin flip</span></div>
+      <div class="stat"><span class="n">3</span><span class="l">assumptions calibration proved wrong</span></div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>How it runs</h2>
+    <p class="sub">Resumable at every step. An interrupted run, a fixed credential or a paused writer picks up exactly where it stopped — translations are cached, so nothing is paid for twice.</p>
+    <div class="pipe">
+      <div class="step"><b>Ingest</b><span>file · URL · sitemap</span></div>
+      <div class="step g"><b>Translate</b><span>Bhashini, + back-translation</span></div>
+      <div class="step w"><b>Transcreate</b><span>writer backend</span></div>
+      <div class="step w"><b>AEO</b><span>answers, FAQ, schema</span></div>
+      <div class="step g"><b>Score</b><span>six sub-scores</span></div>
+      <div class="step w"><b>Rewrite</b><span>until it passes</span></div>
+      <div class="step g"><b>Publish</b><span>Docs + tracker sheet</span></div>
+    </div>
+
+    <div class="note">
+      <h3>Bhashini translates. It cannot rewrite.</h3>
+      <p><a href="https://bhashini.gov.in">Bhashini</a> is the right engine for these languages — free, government-run, purpose-built for the 22 scheduled languages. But it is a <em>translation</em> API. It has no ability to rewrite for tone, restructure a document for answer engines, or take feedback and improve, which is precisely what a "rewrite until it stops sounding machine-made" loop requires.</p>
+      <p>So the two jobs are split. Bhashini does translation and back-translation. A separate pluggable <strong>writer backend</strong> does transcreation, humanising, restructuring and review — either free inside a Claude Code session, or on Google AI Studio's free tier for unattended runs.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The score is a proxy, and it says so everywhere</h2>
+    <p class="sub">There is no honest way to put a detector number on Devanagari.</p>
+    <p>No AI detector is validated on Hindi, Marathi, Gujarati, Bengali, Tamil, Telugu, Kannada or Punjabi. GPTZero and Originality.ai are English-first and their Indic output is unaudited. Printing one of those numbers next to a Hindi article would be reporting noise with a decimal point on it.</p>
+    <p>So this tool does not wrap a detector. It measures six things that are real and observable in Indic text, and reports the inverse of the composite as <code>AI-likeness % (proxy)</code> — the exact label used in the tracker sheet, the report and the published Doc, so it can never be mistaken for a detector reading.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Sub-score</th><th>What it measures</th></tr></thead>
+        <tbody>
+          <tr><td><b>fidelity</b></td><td>back-translation round trip, number and dosage integrity, locked brand terms, medical-claim inflation</td></tr>
+          <tr><td><b>grammar</b></td><td>script purity, spaced punctuation, detokenisation artefacts</td></tr>
+          <tr><td><b>translationese</b></td><td>prepositional calques, English-shaped relative clauses, comma density</td></tr>
+          <tr><td><b>register</b></td><td>honorific consistency, over-Sanskritised vocabulary</td></tr>
+          <tr><td><b>burstiness</b></td><td>sentence-length variation, paragraph uniformity, repeated openings</td></tr>
+          <tr><td><b>native review</b></td><td>an independent pass shown only the target text, never the source</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Calibration, and what it destroyed</h2>
+    <p class="sub">A quality gate whose numbers have never been tested against real text is decoration. This one was tested first — and the first version failed badly.</p>
+
+    <div class="tw">
+      <table>
+        <thead><tr><th>Class</th><th>Source</th><th class="num">HLS</th><th class="num">AI-likeness</th></tr></thead>
+        <tbody>
+          <tr><td><span class="tag ok">native</span></td><td>BBC Hindi journalism</td><td class="num">92.3</td><td class="num">7.7%</td></tr>
+          <tr><td><span class="tag mid">translated</span></td><td>Hindi Wikipedia, rendered from English</td><td class="num">74.7</td><td class="num">25.3%</td></tr>
+          <tr><td><span class="tag no">raw MT</span></td><td>unedited machine translation</td><td class="num">56.0</td><td class="num">44.0%</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The first version of the scorer measured <strong>AUC 0.21</strong>. It ranked translated text as <em>more</em> human than native text. Running the calibration falsified three assumptions that all sounded obviously correct — including the one the whole design had been built around.</p>
+
+    <div class="cards">
+      <div class="card">
+        <p class="claim">“Devanagari prose ends sentences with a danda. A full stop reads as machine output.”</p>
+        <p class="verdict"><b>Backwards.</b> BBC Hindi, written by Hindi journalists, uses a danda in <b>0%</b> of paragraphs. Both machine classes used one in ~98%. The rule was not merely useless — it was penalising the most native text in the sample.</p>
+        <p class="measured">native 0.00 · translated 0.98 · raw MT 1.00 → measured, never scored</p>
+      </div>
+      <div class="card">
+        <p class="claim">“Native prose has shorter sentences than translated prose.”</p>
+        <p class="verdict"><b>Wrong direction.</b> Native journalism runs <em>longer</em> — 22.5 words per sentence against 19.4 for the translated class.</p>
+        <p class="measured">component removed from the score</p>
+      </div>
+      <div class="card">
+        <p class="claim">“Verb-finality is the dominant translationese signal. Indic is verb-final, English is not, so translated prose keeps English clause order.”</p>
+        <p class="verdict"><b>No signal at all.</b> Native 0.921, human-translated 0.956, raw MT 0.906. Indic NMT gets word order right. This was the headline hypothesis of the design and it now carries zero weight.</p>
+        <p class="measured">still reported for diagnosis · weight 0.00</p>
+      </div>
+    </div>
+
+    <h3>What actually separates the classes</h3>
+    <p>Per 1000 words, native writing against raw machine translation:</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Signal</th><th class="num">Native</th><th class="num">Raw MT</th><th>Why it happens</th></tr></thead>
+        <tbody>
+          <tr><td>Space before punctuation</td><td class="num">0.5</td><td class="num">29.8</td><td>detokenisation artefact — <code>शब्द ,</code></td></tr>
+          <tr><td>Prepositional calques</td><td class="num">0.4</td><td class="num">10.7</td><td>“as”, “by”, “through” rendered literally</td></tr>
+          <tr><td>Relative clauses</td><td class="num">0.4</td><td class="num">3.7</td><td>English “which/that” carried across intact</td></tr>
+          <tr><td>Comma density</td><td class="num">22</td><td class="num">72</td><td>English punctuation rhythm transferred</td></tr>
+          <tr><td>Sentence-length CV</td><td class="num">0.58</td><td class="num">0.47</td><td>machine prose is metronomic</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every falsified rule stays in the source as a documented failure rather than being quietly deleted — the reasoning that produced them is the reasoning that will produce the next wrong rule.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What the AEO layer adds</h2>
+    <p class="sub">Search engines rank pages. Answer engines lift passages. That difference decides the whole structure.</p>
+    <ul>
+      <li><strong>TL;DR block</strong> — the passage an answer engine reaches for first</li>
+      <li><strong>Question-form headings</strong>, each followed by a 40–60 word direct answer that still makes sense quoted with no context around it</li>
+      <li><strong>6–10 FAQs</strong> built from real regional query shapes, in native script and Hinglish</li>
+      <li><strong>JSON-LD</strong> — Article / MedicalWebPage, FAQPage, BreadcrumbList and publisher, with <code>inLanguage</code>, <code>speakable</code> and entity anchors</li>
+      <li><strong>hreflang cluster</strong> across all nine variants plus <code>x-default</code>, so the translations stop competing with each other</li>
+      <li><strong>Transliterated Roman slugs</strong> — <code>/hi/diabetes-ke-shuruati-lakshan/</code>, not a percent-encoded Devanagari URL nobody can read in a SERP or paste into WhatsApp</li>
+      <li><strong>Entity anchoring</strong> — named entities get cited in generated answers; pronouns do not</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Rails that are enforced, not requested</h2>
+    <p class="sub">Everything here is checked in code after the model replies. This is health content for Indian clinics; a politely-worded instruction is not a safety mechanism.</p>
+    <ul>
+      <li>Every number in the source must survive into the translation. A <b>500 mg</b> dose quietly becoming <b>50 mg</b> blocks publication outright.</li>
+      <li>Locked brand and product names must come through unchanged.</li>
+      <li>No medical claim may come out stronger than it went in, and a hedge the source carried — “may help”, “consult a doctor” — may not be deleted.</li>
+      <li>A rewrite pass that improves the style score while breaking a fact is <em>rejected</em>, and the previous version is kept.</li>
+      <li>Anything that cannot reach the threshold is marked <code>NEEDS_HUMAN_REVIEW</code> and flagged red in the tracker, never silently shipped.</li>
+      <li>Keyword volumes are left <strong>empty</strong> when Google Ads credentials are absent. Nothing is estimated — a fabricated search volume in a client deliverable is indistinguishable from a measured one.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Status</h2>
+    <p class="sub">What has actually been run, and what has not.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Area</th><th>State</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Extraction</td><td><span class="tag ok">verified</span></td><td>live client post — 49 blocks, 1049 words, 6 FAQs, no nav contamination</td></tr>
+          <tr><td>Sitemap crawl</td><td><span class="tag ok">verified</span></td><td>8,291 URLs walked, 2,434 blog posts matched</td></tr>
+          <tr><td>Scorer calibration</td><td><span class="tag ok">verified</span></td><td>AUC 1.00, Cohen's <em>d</em> 3.2, on both negative classes</td></tr>
+          <tr><td>Pipeline, English → Hindi</td><td><span class="tag ok">verified</span></td><td>8.0% AI-likeness, fidelity 100, AEO 100, no rewrite needed</td></tr>
+          <tr><td>Rewrite loop</td><td><span class="tag ok">verified</span></td><td>12 control-flow checks — fires, improves, rejects fact-breaking passes, never loops</td></tr>
+          <tr><td>Fidelity guards</td><td><span class="tag ok">verified</span></td><td>dosage tampering, dropped brand, inflated claim, deleted hedge — all blocked</td></tr>
+          <tr><td>Bhashini API</td><td><span class="tag no">untested</span></td><td>written to the documented ULCA protocol, never actually called — awaiting free registration</td></tr>
+          <tr><td>Google Docs + Sheets</td><td><span class="tag no">untested</span></td><td>awaiting OAuth credentials</td></tr>
+          <tr><td>Languages beyond Hindi</td><td><span class="tag mid">partial</span></td><td>all nine paths resolve; scoring bands were fitted on Hindi only</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note warn">
+      <h3>This page is documentation, not a running service</h3>
+      <p>aeo-translator is a Python command-line pipeline. It needs API credentials and a writer backend, so there is no hosted version that translates a URL you paste in. Clone the repo and follow <a href="https://github.com/sagarchauhan7792-bot/aeo-translator/blob/main/SETUP.md">SETUP.md</a> to run it.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Running it</h2>
+<pre><span class="c"># one live post, Hindi, local files only</span>
+python run.py --url https://example.com/blog/post/ --langs hi --no-publish
+
+<span class="c"># a sitemap, five posts, three languages, published to Docs + Sheet</span>
+python run.py --sitemap example.com --filter /blog --limit 5 --langs hi,mr,ta
+
+<span class="c"># verify the gate before trusting it</span>
+python calibrate.py --fetch --build-mt-free
+python calibrate.py          <span class="c"># expect AUC 1.00 on both classes</span>
+python test_rewrite_loop.py  <span class="c"># expect ALL CHECKS PASSED</span></pre>
+    <p>Every credential is optional at install time and required at run time. Each one that is missing prints the file to create and where to get it, rather than a stack trace. A no-credential test engine runs the entire pipeline end to end so the plumbing can be checked before any registration completes.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Built for regional-language AEO/GEO work on Indian client sites. MIT licensed — <a href="https://github.com/sagarchauhan7792-bot/aeo-translator">github.com/sagarchauhan7792-bot/aeo-translator</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
