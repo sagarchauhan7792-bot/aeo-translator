@@ -113,8 +113,17 @@ python -m studio          # or double-click blog.bat
 ```
 
 Opens on http://127.0.0.1:8765 (localhost only -- it can spend API quota and
-write to Drive, so it is not exposed to the network). Four tabs:
+write to Drive, so it is not exposed to the network). Five tabs:
 
+- **My Blog** — the front door. Paste a post, fetch a URL, or pick a draft, and
+  get a full on-page SEO audit: title and meta length with a real SERP preview,
+  heading structure, keyword density and placement, Flesch readability, sentence
+  and paragraph rhythm, filler and generated-text phrases, internal and external
+  links with live broken-link checking, image alt coverage, slug quality,
+  structured data, answer-engine readiness, and E-E-A-T including the YMYL rules
+  for health content. Every finding comes with its specific fix, and the
+  JSON-LD it generates is ready to paste into your page head. Needs no
+  credentials.
 - **Ideas** — expands a topic through Google autocomplete, then checks every
   candidate against the site's own sitemap and flags it *covered* / *partial* /
   *gap*. On a site with a couple of thousand posts, "have we already covered
@@ -127,6 +136,11 @@ write to Drive, so it is not exposed to the network). Four tabs:
   document and therefore nothing the fidelity check can compare against.
 - **Translate** — the pipeline below, unchanged.
 - **Library** — everything processed, with scores and Doc links.
+
+What the audit deliberately does **not** report: search volume, keyword
+difficulty, backlinks and rank tracking. None of those can be measured from the
+page itself. Volume wires into Google Ads when the credentials exist; the rest
+need a paid data provider, and inventing them would be worse than their absence.
 
 The English draft is scored on **AEO + rhythm**, not AI-likeness. Three of the
 six sub-scores below measure Indic-specific phenomena and are undefined on

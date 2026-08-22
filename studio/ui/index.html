@@ -134,6 +134,50 @@ pre.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.6;
 .split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:900px){.split{grid-template-columns:1fr}}
 .muted{color:var(--muted)}.sm{font-size:12.5px}
+
+/* ---- audit report ---- */
+.big{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:18px}
+.ring{--v:0;--col:var(--good);width:112px;height:112px;border-radius:50%;flex:none;
+  background:conic-gradient(var(--col) calc(var(--v)*1%),var(--rule) 0);
+  display:grid;place-items:center;position:relative}
+.ring::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--surface)}
+.ring b{position:relative;z-index:1;font-family:"Instrument Serif",serif;font-size:34px;line-height:1}
+.ring i{position:relative;z-index:1;font-style:normal;font-size:10px;color:var(--muted);
+  display:block;text-align:center;margin-top:2px}
+.gbars{flex:1;min-width:280px;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:7px}
+.gbar{background:var(--surface-2);border:1px solid var(--rule);border-radius:8px;padding:8px 11px}
+.gbar .gt{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px}
+.gbar .gt b{font-family:"JetBrains Mono",monospace}
+.gbar .tr{height:4px;border-radius:3px;background:var(--rule);overflow:hidden}
+.gbar .tr i{display:block;height:100%;border-radius:3px}
+.serp{background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:15px 18px;margin-bottom:16px;max-width:640px}
+.serp .u{font-size:12.5px;color:var(--good);margin-bottom:3px;word-break:break-all}
+.serp .t{color:#1a0dab;font-size:19px;line-height:1.3;margin-bottom:3px}
+.serp .d{font-size:13px;color:var(--muted);line-height:1.5}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) .serp .t{color:#8ab4f8}}
+.fx{display:flex;gap:9px;padding:11px 13px;border-bottom:1px solid var(--rule);
+  align-items:flex-start}
+.fx:last-child{border-bottom:none}
+.fx .ic{flex:none;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;
+  font-size:10.5px;font-weight:700;margin-top:2px;color:#fff}
+.fx.fail .ic{background:var(--bad)}.fx.warn .ic{background:var(--warn)}
+.fx.pass .ic{background:var(--good)}
+.fx .bd{flex:1;min-width:0}
+.fx .m{font-size:13.5px;margin-bottom:2px}
+.fx .fixit{font-size:12.5px;color:var(--muted)}
+.fx .gtag{font:500 10px/1 "JetBrains Mono",monospace;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--faint);flex:none;width:96px;padding-top:4px}
+.acc{background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  margin-bottom:16px;overflow:hidden}
+.filt{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.filt button{padding:5px 12px;border-radius:20px;border:1px solid var(--rule-2);
+  background:var(--surface);color:var(--muted);cursor:pointer;font-size:12.5px}
+.filt button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:9px;
+  padding:13px;font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.55;
+  max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word}
 </style>
 </head>
 <body>
@@ -141,7 +185,8 @@ pre.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.6;
 <div class="top"><div class="topin">
   <div class="brand">Blog Studio</div>
   <nav>
-    <button data-tab="ideas" class="on">Ideas</button>
+    <button data-tab="audit" class="on">My Blog</button>
+    <button data-tab="ideas">Ideas</button>
     <button data-tab="draft">Draft</button>
     <button data-tab="translate">Translate</button>
     <button data-tab="library">Library</button>
@@ -154,8 +199,40 @@ pre.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.6;
 <main>
   <div id="capBanner"></div>
 
+
+  <!-- ===================== MY BLOG (SEO AUDIT) ===================== -->
+  <section class="panel on" id="p-audit">
+    <div class="card">
+      <h2>Paste your blog. Get the full SEO report.</h2>
+      <p class="hint">Everything an on-page SEO tool checks &mdash; title, meta, headings, keywords, readability, links, images, structured data, answer-engine readiness and E-E-A-T &mdash; with the specific fix for each finding. Needs no credentials and nothing is sent anywhere except the broken-link check.</p>
+      <div class="row" style="margin-bottom:12px">
+        <div class="f"><label>Input</label>
+          <select id="a-src"><option value="text">Paste the post</option><option value="url">Fetch a URL</option><option value="draft">A saved draft</option></select></div>
+        <div class="f grow" id="a-urlwrap" style="display:none"><label>URL</label>
+          <input id="a-url" placeholder="https://yoursite.com/blog/post/"></div>
+        <div class="f grow" id="a-draftwrap" style="display:none"><label>Draft</label><select id="a-draft"></select></div>
+        <div class="f"><label>Your site (optional)</label>
+          <input id="a-site" placeholder="hiims.in" list="siteList"></div>
+        <div class="f"><label>Target keyword (optional)</label>
+          <input id="a-kw" placeholder="auto-detected"></div>
+      </div>
+      <div class="f" id="a-textwrap" style="margin-bottom:12px">
+        <label>Your post &mdash; markdown or plain text. First # line is the title.</label>
+        <textarea id="a-text" style="min-height:230px" placeholder="# 10 Common Diabetes Symptoms&#10;&#10;Diabetes rarely announces itself&hellip;&#10;&#10;## What are the first signs?&#10;&#10;Frequent urination is usually first&hellip;"></textarea></div>
+      <div class="row">
+        <div class="f grow"><label>Meta description (optional &mdash; overrides what is in the post)</label>
+          <input id="a-desc" placeholder="Leave blank to use the post's own"></div>
+        <label style="display:flex;align-items:center;gap:7px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)">
+          <input type="checkbox" id="a-links" checked style="min-width:auto"> Check for broken links</label>
+        <button class="btn primary" id="a-go">Run the audit</button>
+      </div>
+    </div>
+    <div class="job" id="j-audit"><div class="hd"><span class="dot"></span><span class="t"></span></div><pre class="log"></pre></div>
+    <div id="a-out"></div>
+  </section>
+
   <!-- ===================== IDEAS ===================== -->
-  <section class="panel on" id="p-ideas">
+  <section class="panel" id="p-ideas">
     <div class="card">
       <h2>Find something worth writing</h2>
       <p class="hint">Expands your topic using Google autocomplete — real queries people type, not guesses — then checks each one against the site's own sitemap. On a site with a couple of thousand posts, <b>“have we already covered this?”</b> is the question that matters, and writing the same post twice splits its own rankings.</p>
@@ -304,6 +381,7 @@ async function loadLists() {
   const opts = drafts.map(d => `<option value="${esc(d.slug)}">${esc(d.title || d.slug)}</option>`).join('')
     || '<option value="">(no drafts yet)</option>';
   $('#t-draft').innerHTML = opts;
+  $('#a-draft').innerHTML = opts;
   const briefs = BRIEF ? `<option value="__current">${esc(BRIEF.topic)} (just generated)</option>` : '';
   $('#d-brief').innerHTML = briefs || '<option value="">(run Ideas first)</option>';
 }
@@ -333,6 +411,181 @@ function runJob(kind, body, onDone) {
     };
     tick();
   }));
+}
+
+/* ---- my blog: audit ---- */
+$('#a-src').onchange = () => {
+  const v = $('#a-src').value;
+  $('#a-textwrap').style.display  = v === 'text'  ? '' : 'none';
+  $('#a-urlwrap').style.display   = v === 'url'   ? '' : 'none';
+  $('#a-draftwrap').style.display = v === 'draft' ? '' : 'none';
+};
+
+$('#a-go').onclick = () => {
+  const src = $('#a-src').value;
+  const body = {site: $('#a-site').value.trim(), keyword: $('#a-kw').value.trim(),
+                meta_description: $('#a-desc').value.trim(),
+                check_links: $('#a-links').checked};
+  if (src === 'text')  body.text = $('#a-text').value;
+  if (src === 'url')   body.url  = $('#a-url').value.trim();
+  if (src === 'draft') body.slug = $('#a-draft').value;
+  if (src === 'text'  && !body.text.trim()) return $('#a-text').focus();
+  if (src === 'url'   && !body.url)         return $('#a-url').focus();
+
+  $('#a-go').disabled = true;
+  runJob('audit', body, r => renderAudit(r)).finally(() => $('#a-go').disabled = false);
+};
+
+let AUDIT = null;
+function renderAudit(r) {
+  AUDIT = r;
+  const out = $('#a-out'); out.innerHTML = '';
+  const rep = r.report, st = rep.stats;
+  const col = v => v >= 80 ? 'var(--good)' : v >= 55 ? 'var(--warn)' : 'var(--bad)';
+
+  const card = el('div', 'card');
+  card.appendChild(el('h2', null, r.article.title || 'Your post'));
+
+  const big = el('div', 'big');
+  const ring = el('div', 'ring');
+  ring.style.setProperty('--v', rep.score);
+  ring.style.setProperty('--col', col(rep.score));
+  const inner = el('div');
+  inner.appendChild(el('b', null, rep.score));
+  inner.appendChild(el('i', null, rep.grade));
+  ring.appendChild(inner);
+  big.appendChild(ring);
+
+  const bars = el('div', 'gbars');
+  Object.entries(rep.groups).forEach(([name, g]) => {
+    const b = el('div', 'gbar');
+    const t = el('div', 'gt');
+    t.appendChild(el('span', null, name));
+    t.appendChild(el('b', null, g.score));
+    b.appendChild(t);
+    const tr = el('div', 'tr'); const i = el('i');
+    i.style.width = g.score + '%'; i.style.background = col(g.score);
+    tr.appendChild(i); b.appendChild(tr); bars.appendChild(b);
+  });
+  big.appendChild(bars);
+  card.appendChild(big);
+
+  const sc = el('div', 'scores');
+  [[st.words, 'words'],
+   [st.flesch, 'readability (' + st.readability + ')'],
+   [st.headings, 'headings'],
+   [st.questions, 'question headings'],
+   [st.density + '%', '"' + (st.keyword || '—') + '" density'],
+   [st.links, 'links'],
+   [st.images, 'images']].forEach(([v, l]) => {
+    const d = el('div', 'sc');
+    d.appendChild(el('b', null, v));
+    d.appendChild(el('span', null, l));
+    sc.appendChild(d);
+  });
+  card.appendChild(sc);
+
+  if (r.as_pasted_score !== undefined && r.as_pasted_score < rep.score) {
+    const b = el('div', 'banner info');
+    b.innerHTML = '<b>' + rep.score + ' with the structured data this tool generated for you; '
+      + r.as_pasted_score + ' as pasted.</b> The JSON-LD block below is ready to paste into '
+      + 'your page head — that alone is the difference.';
+    card.appendChild(b);
+  }
+  out.appendChild(card);
+
+  const sp = el('div', 'card');
+  sp.appendChild(el('h2', null, 'How it looks in Google'));
+  sp.appendChild(el('p', 'hint', 'Truncated exactly where Google truncates.'));
+  const s2 = el('div', 'serp');
+  s2.innerHTML = '<div class="u">' + esc(r.serp.url) + '</div>'
+    + '<div class="t">' + esc(r.serp.title) + '</div>'
+    + '<div class="d">' + esc(r.serp.description) + '</div>';
+  sp.appendChild(s2);
+  if (r.serp.title_truncated || r.serp.desc_truncated) {
+    const w = el('div', 'banner warn');
+    w.innerHTML = '<b>Cut off in results.</b> '
+      + (r.serp.title_truncated ? 'Title is ' + r.serp.title_len + ' chars (max 60). ' : '')
+      + (r.serp.desc_truncated ? 'Description is ' + r.serp.desc_len + ' chars (max 155).' : '');
+    sp.appendChild(w);
+  }
+  out.appendChild(sp);
+
+  const fc = el('div', 'card');
+  fc.appendChild(el('h2', null, 'What to fix'));
+  const counts = {fail: 0, warn: 0, pass: 0};
+  rep.findings.forEach(f => counts[f.status]++);
+  const filt = el('div', 'filt');
+  const acc = el('div', 'acc');
+  const draw = mode => {
+    acc.innerHTML = '';
+    rep.findings.filter(f => mode === 'all' ? f.status !== 'pass'
+                        : mode === 'passed' ? f.status === 'pass' : f.status === mode)
+      .forEach(f => {
+        const row = el('div', 'fx ' + f.status);
+        row.appendChild(el('div', 'gtag', f.group));
+        row.appendChild(el('div', 'ic',
+          f.status === 'pass' ? '✓' : f.status === 'warn' ? '!' : '×'));
+        const bd = el('div', 'bd');
+        bd.appendChild(el('div', 'm', f.message));
+        if (f.fix) bd.appendChild(el('div', 'fixit', f.fix));
+        row.appendChild(bd);
+        acc.appendChild(row);
+      });
+    if (!acc.children.length) acc.appendChild(el('div', 'empty', 'Nothing here.'));
+  };
+  [['all', 'Issues (' + (counts.fail + counts.warn) + ')'],
+   ['fail', 'Failed (' + counts.fail + ')'],
+   ['warn', 'Warnings (' + counts.warn + ')'],
+   ['passed', 'Passed (' + counts.pass + ')']].forEach(([m, lbl], i) => {
+    const b = el('button', i === 0 ? 'on' : null, lbl);
+    b.onclick = () => {
+      filt.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+      draw(m);
+    };
+    filt.appendChild(b);
+  });
+  fc.appendChild(filt); fc.appendChild(acc); draw('all');
+  out.appendChild(fc);
+
+  if (r.schema) {
+    const sch = el('div', 'card');
+    sch.appendChild(el('h2', null, 'Structured data, ready to paste'));
+    sch.appendChild(el('p', 'hint',
+      'Put this in your page head inside a script type="application/ld+json" tag. '
+      + 'It is the only part of the page an answer engine reads without guessing.'));
+    sch.appendChild(el('pre', 'code', JSON.stringify(r.schema, null, 2)));
+    const cp = el('button', 'btn sm', 'Copy JSON-LD');
+    cp.style.marginTop = '11px';
+    cp.onclick = () => {
+      navigator.clipboard.writeText(JSON.stringify(r.schema, null, 2));
+      cp.textContent = 'Copied';
+      setTimeout(() => cp.textContent = 'Copy JSON-LD', 1500);
+    };
+    sch.appendChild(cp);
+    const cp2 = el('button', 'btn sm', 'Copy full HTML');
+    cp2.style.cssText = 'margin-top:11px;margin-left:8px';
+    cp2.onclick = () => {
+      navigator.clipboard.writeText(r.html);
+      cp2.textContent = 'Copied';
+      setTimeout(() => cp2.textContent = 'Copy full HTML', 1500);
+    };
+    sch.appendChild(cp2);
+    out.appendChild(sch);
+  }
+
+  const nx = el('div', 'card');
+  nx.appendChild(el('h2', null, 'Next'));
+  const go = el('button', 'btn primary', 'Translate this post into Indian languages →');
+  go.onclick = async () => {
+    await loadLists();
+    document.querySelector('nav button[data-tab=translate]').click();
+    $('#t-src').value = 'draft';
+    $('#t-src').dispatchEvent(new Event('change'));
+    $('#t-draft').value = r.slug;
+  };
+  nx.appendChild(go);
+  out.appendChild(nx);
 }
 
 /* ---------- ideas ---------- */

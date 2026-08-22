@@ -73,6 +73,7 @@ def capabilities() -> dict:
                       "HTML, Markdown and JSON in out/."})
 
     caps["stages"] = {
+        "audit": True,                       # needs nothing at all
         "ideas": True,                       # autocomplete needs nothing
         "draft": caps["writer"] is not None,
         "translate": True,                   # mymemory works without credentials
@@ -107,6 +108,72 @@ def act_ideas(body: dict, job) -> dict:
     slug = slugify(brief.topic)
     write_json(_slugfile(BRIEFS, slug), brief.dict())
     return {"brief": brief.dict(), "slug": slug}
+
+
+def act_audit(body: dict, job) -> dict:
+    """Front door: a pasted / uploaded / fetched post -> full SEO audit."""
+    from . import seo, ideas
+    import sources
+    import aeo as aeomod
+    from extract import from_markdown
+
+    site = (body.get("site") or "").strip()
+
+    if body.get("url"):
+        art = sources.load_url(body["url"].strip())
+    elif body.get("slug"):
+        art = Article.load(_slugfile(DRAFTS, body["slug"]))
+    elif (body.get("text") or "").strip():
+        art = from_markdown(body["text"], url=body.get("source_url", ""),
+                            source_type="file")
+    else:
+        raise ValueError("paste a post, give a URL, or pick a draft")
+
+    if body.get("title"):
+        art.title = body["title"].strip()
+    if body.get("meta_description"):
+        art.meta_description = body["meta_description"].strip()
+
+    # Generating the schema before auditing means the audit reports what the
+    # page WOULD have once you paste the JSON-LD in, and hands you that block.
+    profile = site_profile(art.source_url or site)
+    base = ("https://" + site.replace("https://", "").replace("http://", "").rstrip("/")
+            if site else (CFG["aeo"]["hreflang_base"]))
+    generated = None
+    if body.get("generate_schema", True):
+        url = f"{base.rstrip('/')}/{art.slug}/"
+        generated = aeomod.build_schema(art, profile, art.lang or "en", url)
+
+    index = None
+    if site and body.get("check_site", True):
+        try:
+            index = ideas.site_index(site)
+        except Exception as exc:
+            log(f"site index unavailable: {exc.__class__.__name__}")
+
+    audited = Article.from_dict(art.dict())
+    if generated:
+        audited.meta = dict(audited.meta or {})
+        audited.meta["schema"] = generated
+
+    report = seo.audit(audited, keyword=(body.get("keyword") or "").strip(),
+                       site_index=index, base_url=base,
+                       check_links=bool(body.get("check_links", True)))
+    # Report on what was pasted, not on the schema we just generated for them.
+    raw = seo.audit(art, keyword=(body.get("keyword") or "").strip(),
+                    site_index=index, base_url=base, check_links=False)
+
+    from common import slugify
+    slug = slugify(art.title or "audit")
+    art.save(_slugfile(DRAFTS, slug))
+    (DRAFTS / f"{slug}.md").write_text(aeomod.render_markdown(art), encoding="utf-8")
+
+    return {"report": report.dict(), "as_pasted_score": raw.score,
+            "article": art.dict(), "slug": slug,
+            "serp": seo.serp_preview(art, base),
+            "schema": generated,
+            "html": aeomod.render_html(audited, schema=generated,
+                                       canonical=f"{base.rstrip('/')}/{art.slug}/")}
 
 
 def act_draft(body: dict, job) -> dict:
@@ -227,7 +294,8 @@ def act_translate(body: dict, job) -> dict:
     return {"results": results, "slug": art.slug}
 
 
-ACTIONS = {"ideas": act_ideas, "draft": act_draft, "translate": act_translate}
+ACTIONS = {"audit": act_audit, "ideas": act_ideas, "draft": act_draft,
+           "translate": act_translate}
 
 
 # ------------------------------------------------------------------ handler

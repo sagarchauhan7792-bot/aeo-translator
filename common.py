@@ -81,12 +81,22 @@ def languages() -> list[dict]:
     return config()["languages"]
 
 
+# English is the source language, not a translation target, so it is not in
+# config.json's `languages` list -- but schema, slugs and the audit all handle
+# English documents and legitimately look it up.
+_ENGLISH = {"code": "en", "name": "English", "native": "English", "bhashini": "en",
+            "script": "Latin", "range": ["0000", "007F"], "region": "India",
+            "honorific": "formal"}
+
+
 def lang_by_code(code: str) -> dict:
+    if code == "en":
+        return dict(_ENGLISH)
     for entry in languages():
         if entry["code"] == code:
             return entry
     known = ", ".join(e["code"] for e in languages())
-    raise KeyError(f"unknown language {code!r}. configured: {known}")
+    raise KeyError(f"unknown language {code!r}. configured: en, {known}")
 
 
 def site_profile(url_or_host: str | None) -> dict:
