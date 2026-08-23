@@ -1,9 +1,12 @@
 """Launcher.
 
-  python -m studio                    localhost only, no sign-in
-  python -m studio --set-password     set the shared team password
-  python -m studio --share            public HTTPS via Cloudflare Tunnel
-  python -m studio --host 0.0.0.0     reachable on your LAN (needs a password)
+  python -m studio                          localhost only, no sign-in
+  python -m studio --set-password           set the shared team password
+  python -m studio --share                  public HTTPS, random address, dies on restart
+  python -m studio --domain studio.x.com    public HTTPS, FIXED address, survives a restart
+  python -m studio --host 0.0.0.0           reachable on your LAN (needs a password)
+  python -m studio --no-auth --domain ...   fixed address, NO LOGIN -- only ever pass this
+                                            because you specifically want it; see serve()
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common import log                                  # noqa: E402
 from studio import auth                                # noqa: E402
 from studio.server import serve                        # noqa: E402
 
@@ -120,13 +124,97 @@ def _share(port: int) -> None:
     threading.Thread(target=run, daemon=True, name="cloudflared").start()
 
 
+TUNNEL_NAME = "blog-studio"
+
+
+def _run(exe: str, *args: str) -> tuple[int, str]:
+    r = subprocess.run([exe, *args], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=60)
+    return r.returncode, (r.stdout + r.stderr)
+
+
+def _named_tunnel(port: int, domain: str) -> None:
+    """Persistent tunnel: same URL every run, survives a restart.
+
+    Unlike --share's quick tunnel, this needs a one-time `cloudflared tunnel
+    login` (the user authorising this machine against their own Cloudflare
+    account and picking the zone -- not something that can be done headlessly)
+    before it exists. Every step here is idempotent: re-running this after the
+    tunnel and DNS record already exist just confirms they're there and starts
+    it, so the same command works for first-time setup and every run after.
+    """
+    exe = _cloudflared()
+    if not exe:
+        print("\n  cloudflared is not installed. See --share's message for how "
+              "to install it.\n")
+        return
+
+    import os
+    cert = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".cloudflared" / "cert.pem"
+    if not cert.exists():
+        print("\n  This machine has not authorised a Cloudflare account yet.")
+        print("  Run this once, complete the login in the browser it opens, then")
+        print("  run this same command again:\n")
+        print(f"    cloudflared tunnel login\n")
+        return
+
+    # Idempotent create: "already exists" from a prior run is fine, anything
+    # else is a real failure worth stopping for.
+    code, out = _run(exe, "tunnel", "create", TUNNEL_NAME)
+    if code != 0 and "already exists" not in out.lower():
+        print(f"\n  Could not create the tunnel:\n{out}\n")
+        return
+    log(f"tunnel '{TUNNEL_NAME}' ready" + (" (created)" if code == 0 else " (existing)"))
+
+    code, out = _run(exe, "tunnel", "route", "dns", TUNNEL_NAME, domain)
+    if code != 0 and "already configured" not in out.lower() and "already exists" not in out.lower():
+        print(f"\n  Could not point {domain} at the tunnel:\n{out}\n")
+        print("  Check that revnox.in's DNS is managed through this Cloudflare "
+              "account.\n")
+        return
+    log(f"{domain} -> tunnel '{TUNNEL_NAME}'")
+
+    from common import ROOT
+    logfile = ROOT / "cloudflared.log"
+
+    def run() -> None:
+        time.sleep(1.5)
+        with logfile.open("w", encoding="utf-8", errors="replace") as fh:
+            proc = subprocess.Popen(
+                [exe, "tunnel", "--url", f"http://127.0.0.1:{port}",
+                 "--no-autoupdate", "run", TUNNEL_NAME],
+                stdout=fh, stderr=subprocess.STDOUT)
+        time.sleep(6)
+        if proc.poll() is not None:
+            print(f"\n  cloudflared exited early. See {logfile}\n")
+            return
+        print("\n" + "=" * 68)
+        print(f"  PUBLIC URL:  https://{domain}", flush=True)
+        print("=" * 68, flush=True)
+        print("  Fixed address -- stays the same across restarts. It stops", flush=True)
+        print("  working only if this process or cloudflared itself is stopped.", flush=True)
+        print(f"  Tunnel log: {logfile}\n", flush=True)
+
+    threading.Thread(target=run, daemon=True, name="cloudflared").start()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Blog Studio")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 to allow other machines (requires a password)")
     ap.add_argument("--share", action="store_true",
-                    help="expose a public HTTPS URL via Cloudflare Tunnel")
+                    help="expose a public HTTPS URL via Cloudflare Tunnel "
+                        "(random address, changes every restart)")
+    ap.add_argument("--domain", default="",
+                    help="expose a public HTTPS URL at this FIXED domain via a "
+                        "named Cloudflare Tunnel (e.g. studio.revnox.in) -- "
+                        "needs `cloudflared tunnel login` done once first")
+    ap.add_argument("--no-auth", action="store_true",
+                    help="disable the sign-in page entirely. Only meaningful "
+                        "with --share/--domain/--host, and only pass this "
+                        "because you specifically want no login on a public "
+                        "URL -- see the warning this prints on startup.")
     ap.add_argument("--set-password", action="store_true",
                     help="set or change the shared team password")
     ap.add_argument("--no-browser", action="store_true")
@@ -135,20 +223,25 @@ def main() -> int:
     if args.set_password:
         return _set_password()
 
-    if args.share and not auth.is_configured():
-        print("\nRefusing to share without a password.\n")
+    public = args.share or args.domain or args.host not in ("127.0.0.1", "localhost", "::1")
+    if public and not args.no_auth and not auth.is_configured():
+        print("\nRefusing to expose this without a password.\n")
         print("A public URL with no login hands your API keys, your quota and")
         print("your Drive access to anyone who finds it. Set one first:\n")
         print("  python -m studio --set-password\n")
+        print("...or pass --no-auth if you deliberately want no login at all.\n")
         return 2
 
     port = _free_port(args.port, args.host)
-    if args.share:
+    if args.domain:
+        _named_tunnel(port, args.domain)
+    elif args.share:
         _share(port)
     elif not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
-    serve(args.host, port, behind_tls=args.share)
+    serve(args.host, port, behind_tls=bool(args.share or args.domain),
+          no_auth=args.no_auth)
     return 0
 
 

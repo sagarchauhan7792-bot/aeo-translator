@@ -41,3 +41,5 @@ studio-run.log
 
 # English AI-detection calibration fixtures (fetched, not authored)
 samples_en/
+
+cloudflared-login.log

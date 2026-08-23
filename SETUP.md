@@ -184,17 +184,18 @@ winget install --id Cloudflare.cloudflared
 ```
 
 The quick-tunnel address changes on every restart and dies when the process stops
-or the machine sleeps. For a fixed address, create a **named tunnel** on a domain
-you own:
+or the machine sleeps. For a fixed address on a domain you own, `--domain` does
+the whole named-tunnel setup for you -- tunnel creation, DNS routing, and running
+it -- and is safe to run every time, not just the first:
 
 ```bash
-cloudflared tunnel login
-cloudflared tunnel create blog-studio
-cloudflared tunnel route dns blog-studio studio.yourdomain.com
-cloudflared tunnel run --url http://127.0.0.1:8765 blog-studio
+python -m studio --domain studio.yourdomain.com
 ```
 
-Then run `python -m studio --no-browser` alongside it.
+The domain's DNS has to be managed through the same Cloudflare account. The very
+first run needs a one-time interactive login so cloudflared can act on your
+account -- it will tell you to run `cloudflared tunnel login` and stop; do that,
+then run the same `--domain` command again.
 
 ### Or just your own network
 
@@ -203,6 +204,19 @@ python -m studio --host 0.0.0.0
 ```
 
 Reachable from other machines on the same Wi-Fi. Still requires the password.
+
+### Running with no login at all
+
+`--no-auth` disables the sign-in page entirely, including on a public
+`--share`/`--domain` address. This is a deliberate opt-in, not a default: without
+it, exposing the app beyond localhost with no password configured still refuses
+to start. Only pass `--no-auth` if you specifically want anyone who finds the
+URL to have full access -- your API quota, the crawler, and (once Google OAuth
+is set up) Drive write access, with nothing standing in front of it.
+
+```bash
+python -m studio --domain studio.yourdomain.com --no-auth
+```
 
 ### What everyone shares
 

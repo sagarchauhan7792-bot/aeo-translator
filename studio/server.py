@@ -813,13 +813,21 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, *,
-          behind_tls: bool = False) -> None:
+          behind_tls: bool = False, no_auth: bool = False) -> None:
     local_only = host in ("127.0.0.1", "localhost", "::1")
 
     # The interlock. Everything else in this file is convenience; this is the
     # part that stops the app being handed to the internet with live API keys
-    # and no login.
-    if not local_only and not auth.is_configured():
+    # and no login -- unless `no_auth` is explicitly passed, which only
+    # happens from `--no-auth` on the command line. That flag exists because
+    # it was asked for, deliberately, after being told exactly what it opens
+    # up: anyone who finds the URL gets the Gemini quota, the crawler, and
+    # future Drive write access, no login at all. It is not the default and
+    # never triggers by omission -- a bare public bind with no password still
+    # refuses to start, same as before.
+    if no_auth:
+        Handler.require_auth = False
+    elif not local_only and not auth.is_configured():
         raise SystemExit(
             f"\nRefusing to listen on {host} without a password.\n\n"
             "Blog Studio holds live API keys, can spend your quota, crawls any\n"
@@ -827,14 +835,17 @@ def serve(host: str = "127.0.0.1", port: int = 8765, *,
             "a public address with no login, all of that belongs to whoever\n"
             "finds the URL.\n\n"
             "  python -m studio --set-password\n\n"
-            "Then start it again. (Localhost needs no password.)\n")
-
-    Handler.require_auth = not local_only or auth.is_configured()
+            "Then start it again, or pass --no-auth to run with no login at all\n"
+            "(only if you mean it -- this is reachable from the internet).\n")
+    else:
+        Handler.require_auth = not local_only or auth.is_configured()
     Handler.behind_tls = behind_tls
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     log(f"Blog Studio on http://{host}:{port}")
-    if Handler.require_auth:
+    if no_auth and not local_only:
+        log("  *** NO LOGIN -- open to anyone who reaches this address ***")
+    elif Handler.require_auth:
         log("  sign-in required" + ("" if auth.is_configured()
                                     else "  (NO PASSWORD SET -- run --set-password)"))
     else:
