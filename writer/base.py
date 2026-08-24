@@ -226,15 +226,21 @@ Reply with JSON only, matching this shape:
 
 
 def rewrite_prompt(*, lang: str, text_md: str, brief: list[str],
-                   profile: dict, ai_pct: float, target: float) -> str:
+                   profile: dict, ai_pct: float = 0.0, target: float = 0.0) -> str:
     entry = lang_by_code(lang)
     issues = "\n".join(f"  - {b}" for b in brief)
-    return f"""Revise this {entry['name']} article so it reads as native writing.
+    # Deliberately NOT framed as "sound more human" / "hit this AI-likeness
+    # score" -- that framing is what caused real failures on this project: the
+    # model, chasing a lower detection score, invented statistics that were not
+    # in the source to sound more authoritative. This function is now only
+    # called to fix specific, named, content-integrity defects, so the
+    # instruction says exactly that and nothing more.
+    return f"""Fix the specific defects listed below in this {entry['name']}
+article. Change nothing else -- do not rewrite for style, tone, or to make the
+prose seem more "native" or less "AI-generated". That kind of open-ended
+instruction is exactly what caused the defects in the first place.
 
-An automated check scored it at {ai_pct:.0f}% machine-likeness. The target is
-{target:.0f}% or below. These are the specific defects it found -- fix these,
-not your general impression of the text:
-
+DEFECTS TO FIX:
 {issues}
 
 {language_rubric(lang)}
@@ -243,11 +249,13 @@ not your general impression of the text:
 
 HARD CONSTRAINTS:
   - Keep every fact, number, dosage, name and URL exactly as it appears now.
-  - Keep the heading structure and the block order. Rewrite the prose inside
-    them; do not reorganise the document.
+  - Never introduce a number, statistic, date, percentage or count that is
+    not already present in the current text. If a defect seems to call for
+    one, fix it without adding a figure instead.
+  - Keep the heading structure and the block order. Change only what is
+    needed to fix the named defect.
   - Do not make any medical claim stronger than it currently is.
-  - Do not shorten the article. Fixing translationese means restructuring
-    sentences, not deleting them.
+  - Do not shorten the article.
 
 BRAND VOICE: {profile.get('voice', 'clear, plain, conversational')}
 

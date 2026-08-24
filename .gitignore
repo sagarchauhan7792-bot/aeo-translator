@@ -6,6 +6,8 @@ google_ads_customer_id.txt
 bhashini_user_id.txt
 bhashini_api_key.txt
 gemini_api_key.txt
+pagespeed_api_key.txt
+google_api_key.txt
 *.key
 .env
 

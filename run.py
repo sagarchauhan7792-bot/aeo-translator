@@ -104,12 +104,26 @@ def process_language(src: Article, lang: str, *, profile: dict, writer,
     log(f"first pass: {report.summary()}", indent=1)
 
     # 5. rewrite loop -------------------------------------------------------
+    # Fires ONLY on a real content-integrity defect (a dropped/invented number,
+    # a wrong locked term, a lost hedge, mixed script, an empty block) -- never
+    # on the AI-likeness score alone. ai_pct is measured and shown throughout
+    # this pipeline as information, but publishing does not wait on it; see
+    # quality.score_article's `passed` for the one thing that still gates.
+    #
+    # This used to also loop while ai_pct was above a target, asking the model
+    # to "sound more native". That framing was the problem: chasing a lower
+    # detection score, the model invented statistics not present in the
+    # source to sound more authoritative -- which then tripped the blocking
+    # check anyway. Looping on blocking alone removes the incentive that
+    # caused it. The regression guard below compares WHICH defects are
+    # present between passes, not just the count -- a raw count can drop
+    # while a rewrite trades one real defect (a wrong number) for a
+    # different one (a lost hedge), which test_rewrite_loop.py case 4 caught.
     passes = 0
-    while (report.ai_pct > TH["rewrite_trigger_ai_pct"] or report.blocking) \
-            and passes < TH["max_rewrite_passes"]:
+    while report.blocking and passes < TH["max_rewrite_passes"]:
         passes += 1
-        log(f"rewrite pass {passes} (AI {report.ai_pct:.0f}% > "
-            f"{TH['rewrite_trigger_ai_pct']}%)", indent=1)
+        log(f"rewrite pass {passes} -- fixing {len(report.blocking)} "
+            f"blocking defect(s)", indent=1)
         result = writer.rewrite(
             lang=lang, slug=slug, text_md=aeo.render_markdown(art),
             brief=quality.rewrite_brief(report), profile=profile,
@@ -120,27 +134,27 @@ def process_language(src: Article, lang: str, *, profile: dict, writer,
         new_report = quality.score_article(candidate, src, back, lang,
                                            expected_honorific=honorific)
 
-        # A rewrite that improves style while breaking a fact is a regression.
-        if new_report.blocking and not report.blocking:
-            warn(f"pass {passes} introduced a blocking defect "
-                 f"({new_report.blocking[0]['detail'][:70]}); keeping previous version")
+        # Compare WHICH defects are present, not just how many. A raw count
+        # comparison lets a rewrite trade two number defects for one lost
+        # hedge and call it progress (2 -> 1 looks like an improvement) --
+        # caught by test_rewrite_loop.py case 4. A rewrite that fixes some
+        # defects while introducing a defect that was not there before is
+        # rejected outright, regardless of the net count.
+        old_sigs = {(f["kind"], f.get("sample", "")) for f in report.blocking}
+        new_sigs = {(f["kind"], f.get("sample", "")) for f in new_report.blocking}
+        introduced = new_sigs - old_sigs
+        if introduced:
+            new_kind = next(f for f in new_report.blocking
+                            if (f["kind"], f.get("sample", "")) in introduced)
+            warn(f"pass {passes} introduced a new blocking defect "
+                 f"({new_kind['detail'][:70]}); keeping previous version")
             break
-        # No measurable change at all: another identical pass will not help,
-        # and a document with an unfixable blocking defect would otherwise burn
-        # every remaining pass producing the same output.
-        unchanged = (abs(new_report.ai_pct - report.ai_pct) < 0.05
-                     and len(new_report.blocking) == len(report.blocking))
-        if unchanged:
-            log(f"pass {passes} changed nothing measurable; stopping", indent=2)
-            break
-        if new_report.ai_pct >= report.ai_pct and not report.blocking:
-            log(f"pass {passes} did not improve ({report.ai_pct:.0f}% -> "
-                f"{new_report.ai_pct:.0f}%); stopping", indent=2)
+        if len(new_sigs) >= len(old_sigs):
+            log(f"pass {passes} did not reduce the blocking defects; stopping", indent=2)
             break
         art, report = candidate, new_report
-        log(f"after pass {passes}: {report.summary()}", indent=2)
-        if report.ai_pct <= TH["target_ai_pct"] and not report.blocking:
-            break
+        log(f"after pass {passes}: {report.summary()} "
+            f"({len(report.blocking)} blocking defect(s) left)", indent=2)
 
     # 6. independent native review, then final score ------------------------
     try:
@@ -176,13 +190,13 @@ def process_language(src: Article, lang: str, *, profile: dict, writer,
     rec.aeo = report.aeo
     rec.words = report.words
 
+    # report.passed == (not report.blocking): a real content-integrity defect,
+    # not the AI-likeness score. A high ai_pct alone never lands here.
     if report.passed:
         rec.status = "scored"
     else:
         rec.status = "needs_human_review"
-        reasons = [b["detail"] for b in report.blocking][:2] or \
-                  [f"AI-likeness {report.ai_pct:.0f}% is above the {TH['hard_fail_ai_pct']}% bar"]
-        rec.error = "; ".join(reasons)
+        rec.error = "; ".join(b["detail"] for b in report.blocking[:2])
         warn(f"{lang}: NEEDS HUMAN REVIEW -- {rec.error}")
 
     # 8. publish ------------------------------------------------------------

@@ -599,10 +599,14 @@ def score_article(translated: Article, source: Article, back: Article | None,
                 ("protected_span", "truncation", "empty_block", "mixed_script",
                  "locked_term", "medical_claim", "hedge_lost")]
 
-    passed = (ai_pct <= TH["hard_fail_ai_pct"]
-              and not blocking
-              and subs["fidelity"].score >= TH["min_fidelity"]
-              and subs["grammar"].score >= TH["min_grammar"])
+    # `passed` gates whether the translation is safe to ship, not whether it
+    # reads as human. ai_pct, fidelity and grammar scores are still computed
+    # and shown -- useful information -- but only `blocking` (protected
+    # numbers/dosages/URLs, locked brand terms, medical-claim inflation, a
+    # lost hedge, mixed script, an empty block) withholds publishing. Content
+    # that scores 40% AI-likeness still gets a Doc; content with an invented
+    # statistic does not, regardless of how human the rest of it reads.
+    passed = not blocking
 
     return Report(
         lang=lang,

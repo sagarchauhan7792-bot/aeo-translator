@@ -1,14 +1,23 @@
 """Control-flow tests for the rewrite loop.
 
-The loop has four behaviours that matter and are easy to get wrong:
+Rewritten after the loop stopped triggering on the AI-likeness score (see
+run.py's rewrite-loop comment and quality.py's `passed`): looping to chase a
+lower detection score is what caused the model to invent statistics on this
+project, since "sound more native" has no ceiling and the model kept adding
+authoritative-sounding numbers that were not in the source. The loop now fires
+only on a genuine content-integrity defect -- a protected number changed, a
+locked term dropped, a hedge lost -- and ai_pct is informational only.
 
-  1. It fires when the score is above the trigger, and stops once the target
-     is reached.
-  2. It gives up when a pass fails to improve, instead of burning every pass.
-  3. It rejects a pass that improves style while breaking a fact, keeping the
-     previous version rather than the "better" broken one.
-  4. It marks NEEDS_HUMAN_REVIEW when passes run out, instead of looping or
-     silently publishing.
+Four behaviours that matter and are easy to get wrong:
+
+  1. A high AI-likeness score alone, with no content defect, never fires the
+     loop and never blocks publishing -- this is the behaviour that changed.
+  2. A real defect fires the loop, and it stops once the defect is fixed.
+  3. A pass that fails to reduce the defect count stops the loop early,
+     instead of burning every remaining pass on a fix that isn't working.
+  4. A pass that fixes the original defect but introduces a different one is
+     rejected outright -- the previous (still-flawed, but not worse) version
+     is kept rather than trading one defect for another.
 
 Run: python test_rewrite_loop.py
 """
@@ -20,48 +29,56 @@ from pathlib import Path
 
 import run
 from common import ROOT, config
-from extract import Article, Block, from_markdown
+from extract import Article, from_markdown
 
 TH = config()["thresholds"]
 SCRATCH = ROOT / "out" / "_looptest"
 
-# Raw machine translation, with the artefacts the scorer keys on: spaced
-# hyphens, spaces before punctuation, prepositional calques, comma pile-up.
-MT_BAD = """# मधुमेह के लक्षण
+SRC_MD = ("# Diabetes symptoms\n\nDoctors recommend a 500 mg dose under "
+          "supervision. Consult a doctor before starting.")
+
+# Correct dosage, hedge present, but written with every raw-MT tell the style
+# scorer keys on (spaced hyphens, spaces before punctuation, comma pile-up).
+# No content defect -- this is deliberately "reads very AI-generated but is
+# factually and safely correct", the exact case the old loop got wrong.
+STYLE_BAD_BUT_SAFE = """# मधुमेह के लक्षण
 
 मधुमेह , जिसे आमतौर पर शुगर के रूप में जाना जाता है , एक ऐसी स्थिति है जो
 लंबे समय तक उच्च रक्त शर्करा के स्तर की विशेषता है ।
 
 बार - बार पेशाब आना , प्यास में वृद्धि , और भूख में वृद्धि , ये सभी लक्षण हैं
-जो रोगियों में देखे जाते हैं , और जिनमें से कई को अनदेखा किया जाता है ।
+जो रोगियों में देखे जाते हैं ।
 
 डॉक्टर के द्वारा 500 mg की खुराक की सिफारिश की जाती है , जो कि निगरानी के
 माध्यम से दी जाती है , और जिसे डॉक्टर से परामर्श के बाद ही शुरू किया जाना चाहिए ।
 """
 
-GOOD = """# मधुमेह के लक्षण
+# Clean prose, correct dosage, hedge present. What a fix pass should produce.
+CLEAN = """# मधुमेह के लक्षण
 
-मधुमेह चुपचाप आती है। शरीर महीनों पहले इशारे देने लगता है। ज़्यादातर लोग उन्हें
-रोज़मर्रा की थकान समझकर टाल देते हैं और यही देरी बाद में भारी पड़ती है।
+मधुमेह चुपचाप आती है। शरीर महीनों पहले इशारे देने लगता है।
 
-पेशाब बार-बार आने लगता है। प्यास बढ़ जाती है। भूख भी तेज़ हो जाती है। तीनों एक
-साथ दिखें तो जाँच करा लीजिए।
+पेशाब बार-बार आने लगता है। प्यास बढ़ जाती है। भूख भी तेज़ हो जाती है।
 
 डॉक्टर की निगरानी में 500 mg की मानक खुराक दी जाती है। शुरू करने से पहले डॉक्टर
 से सलाह ज़रूर लीजिए।
 """
 
-MEDIUM = """# मधुमेह के लक्षण
+# Same as CLEAN, but the dosage is wrong -- 50 mg instead of 500 mg. A real
+# content-integrity defect: diff_numbers(src, translated) catches this
+# directly against the CURRENT candidate text, which is why it can be fixed
+# (or broken further) by a rewrite pass, unlike the back-translation checks
+# that are frozen at the start of the run.
+BAD_DOSAGE = CLEAN.replace("500 mg", "50 mg")
 
-मधुमेह चुपचाप आती है और शरीर महीनों पहले इशारे देने लगता है , जिन्हें ज़्यादातर
-लोग थकान के रूप में देखते हैं ।
+# Correct dosage, but every hedge marker removed -- "consult a doctor" gone
+# entirely. A different defect from BAD_DOSAGE, used to prove a rewrite that
+# fixes one defect while introducing another is rejected, not accepted.
+NO_HEDGE = ("# मधुमेह के लक्षण\n\nमधुमेह चुपचाप आती है। शरीर महीनों पहले इशारे "
+           "देने लगता है।\n\nपेशाब बार-बार आने लगता है। प्यास बढ़ जाती है।\n\n"
+           "500 mg की मानक खुराक दी जाती है।\n")
 
-पेशाब बार - बार आने लगता है और प्यास बढ़ जाती है , और भूख भी तेज़ हो जाती है ।
-
-डॉक्टर के द्वारा 500 mg की खुराक दी जाती है , जो निगरानी के माध्यम से दी जाती है ।
-"""
-
-BROKEN_FACT = GOOD.replace("500 mg", "50 mg")
+BACK_OK = SRC_MD  # a clean, faithful back-translation for every case
 
 
 def _art(md: str, lang: str = "hi") -> Article:
@@ -111,17 +128,14 @@ class StubWriter:
         return _plan(_art(md))
 
 
-def _run(sequence: list[str], start_md: str, back_md: str | None = None):
+def _run(sequence: list[str], start_md: str, back_md: str = BACK_OK):
     if SCRATCH.exists():
         shutil.rmtree(SCRATCH, ignore_errors=True)
-    src = _art("# Diabetes symptoms\n\nDoctors recommend a 500 mg dose under "
-               "supervision. Consult a doctor before starting.", "en")
+    src = _art(SRC_MD, "en")
     src.slug = "looptest"
     src.source_url = "looptest://case"
     mt = _art(start_md)
-    back = _art(back_md or
-                "# Diabetes symptoms\n\nDoctors recommend a 500 mg dose under "
-                "supervision. Consult a doctor before starting.", "en")
+    back = _art(back_md, "en")
     writer = StubWriter(sequence, mt)
     rec = run.process_language(
         src, "hi", profile={"voice": "plain", "ymyl": True},
@@ -136,41 +150,38 @@ def check(name: str, condition: bool, detail: str = "") -> bool:
 
 def main() -> int:
     ok = True
-    print("\n1. Loop fires on bad input and stops once the target is reached")
-    rec, w = _run([MEDIUM, GOOD, GOOD], MT_BAD)
-    ok &= check("rewrite loop fired", rec.passes >= 1, f"{rec.passes} passes")
-    ok &= check("score reached the target", rec.ai_pct <= TH["target_ai_pct"],
-                f"AI {rec.ai_pct}% <= {TH['target_ai_pct']}%")
-    ok &= check("did not burn every pass", rec.passes < TH["max_rewrite_passes"] + 1,
-                f"{rec.passes}/{TH['max_rewrite_passes']}")
-    ok &= check("final status is scored", rec.status == "scored", rec.status)
 
-    print("\n2. A pass that does not improve stops the loop early")
-    rec, w = _run([MT_BAD, MT_BAD, MT_BAD], MT_BAD)
-    ok &= check("stopped before exhausting passes", w.rewrites <= 2,
-                f"{w.rewrites} rewrite call(s)")
+    print("\n1. Bad style, no content defect: loop never fires, publishes anyway")
+    rec, w = _run([CLEAN, CLEAN, CLEAN], STYLE_BAD_BUT_SAFE)
+    ok &= check("high AI-likeness measured (proves this fixture is genuinely bad style)",
+               rec.ai_pct > TH["rewrite_trigger_ai_pct"], f"AI {rec.ai_pct}%")
+    ok &= check("loop did not fire despite that", rec.passes == 0, f"{rec.passes} passes")
+    ok &= check("no rewrite call was made", w.rewrites == 0, f"{w.rewrites} call(s)")
+    ok &= check("status is scored, not held for review", rec.status == "scored", rec.status)
+
+    print("\n2. Real defect (wrong dosage): loop fires and fixes it")
+    rec, w = _run([CLEAN, CLEAN, CLEAN], BAD_DOSAGE)
+    ok &= check("rewrite loop fired", rec.passes >= 1, f"{rec.passes} passes")
+    ok &= check("defect is gone", rec.status == "scored", rec.status)
+    ok &= check("did not burn every pass", rec.passes < TH["max_rewrite_passes"],
+               f"{rec.passes}/{TH['max_rewrite_passes']}")
+
+    print("\n3. A pass that never fixes the defect stops the loop early")
+    rec, w = _run([BAD_DOSAGE, BAD_DOSAGE, BAD_DOSAGE], BAD_DOSAGE)
+    ok &= check("stopped well before exhausting passes", w.rewrites <= 2,
+               f"{w.rewrites} rewrite call(s)")
     ok &= check("flagged for a human", rec.status == "needs_human_review", rec.status)
     ok &= check("reason recorded", bool(rec.error), (rec.error or "")[:60])
 
-    print("\n3. A pass that breaks a fact is rejected, previous version kept")
-    # Back-translation is clean, so the only source of a blocking defect is the
-    # rewrite itself -- which is the case the regression guard exists for. The
-    # first rewrite fixes the style AND breaks the dosage; it must be rejected
-    # even though its style score is much better.
-    rec, w = _run([BROKEN_FACT, GOOD, GOOD], MT_BAD)
+    print("\n4. A pass that fixes the defect but introduces a new one is rejected")
+    rec, w = _run([NO_HEDGE, CLEAN, CLEAN], BAD_DOSAGE)
     art = Article.load(SCRATCH.parent / "looptest" / "hi" / "article.json")
     text = art.full_text()
-    ok &= check("rejected the fact-broken pass", "50 mg" not in text.replace("500 mg", ""),
-                "dosage intact")
-    ok &= check("kept the pre-rewrite version", "500 mg" in text or "500" in text)
-    ok &= check("stopped rather than accepting it", w.rewrites == 1,
-                f"{w.rewrites} rewrite call(s)")
+    ok &= check("did not accept the hedge-dropping rewrite",
+               "डॉक्टर" in text or "सलाह" in text, "hedge marker present")
+    ok &= check("stopped rather than trading one defect for another",
+               w.rewrites == 1, f"{w.rewrites} rewrite call(s)")
     ok &= check("flagged for a human", rec.status == "needs_human_review", rec.status)
-
-    print("\n4. Passes exhausted -> NEEDS_HUMAN_REVIEW, never an infinite loop")
-    rec, w = _run([MEDIUM, MEDIUM, MEDIUM], MT_BAD)
-    ok &= check("capped at max_rewrite_passes", w.rewrites <= TH["max_rewrite_passes"],
-                f"{w.rewrites} <= {TH['max_rewrite_passes']}")
 
     print("\n" + ("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED"))
     return 0 if ok else 1
