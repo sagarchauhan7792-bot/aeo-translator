@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import socket
 import subprocess
 import sys
@@ -94,7 +95,14 @@ def _share(port: int, *, no_auth: bool = False) -> None:
         time.sleep(1.5)                      # let the server bind first
         with logfile.open("w", encoding="utf-8", errors="replace") as fh:
             proc = subprocess.Popen(
-                [exe, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"],
+                # QUIC (cloudflared's default transport) was measured dropping
+                # the tunnel's control stream every 10-20s on this network --
+                # "control stream encountered a failure while serving", in a
+                # continuous retry loop, confirmed live in cloudflared.log.
+                # Forcing HTTP/2 fixed it: 6 checks over 60s, 200 every time,
+                # zero errors logged, versus the constant churn under QUIC.
+                [exe, "tunnel", "--url", f"http://127.0.0.1:{port}",
+                 "--no-autoupdate", "--protocol", "http2"],
                 stdout=fh, stderr=subprocess.STDOUT)
 
         rx = re.compile(r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com")
@@ -185,8 +193,11 @@ def _named_tunnel(port: int, domain: str) -> None:
         time.sleep(1.5)
         with logfile.open("w", encoding="utf-8", errors="replace") as fh:
             proc = subprocess.Popen(
+                # Same HTTP/2 fix as the quick tunnel -- see its comment.
+                # QUIC's control-stream drops are a transport-level failure,
+                # not specific to the quick-tunnel path.
                 [exe, "tunnel", "--url", f"http://127.0.0.1:{port}",
-                 "--no-autoupdate", "run", TUNNEL_NAME],
+                 "--no-autoupdate", "--protocol", "http2", "run", TUNNEL_NAME],
                 stdout=fh, stderr=subprocess.STDOUT)
         time.sleep(6)
         if proc.poll() is not None:
@@ -204,7 +215,10 @@ def _named_tunnel(port: int, domain: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Blog Studio")
-    ap.add_argument("--port", type=int, default=8765)
+    # PORT, when set and no explicit --port is given, lets the Claude Code
+    # preview tool assign its own free port for the in-app preview pane
+    # without colliding with a separately-running public instance on 8765.
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8765)))
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 to allow other machines (requires a password)")
     ap.add_argument("--share", action="store_true",
