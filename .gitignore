@@ -43,3 +43,6 @@ studio-run.log
 samples_en/
 
 cloudflared-login.log
+
+# Downloaded OAuth client JSONs (same sensitivity as credentials.json)
+client_secret_*.json
