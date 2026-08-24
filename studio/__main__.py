@@ -70,7 +70,7 @@ def _cloudflared() -> str | None:
     return None
 
 
-def _share(port: int) -> None:
+def _share(port: int, *, no_auth: bool = False) -> None:
     """Start a Cloudflare quick tunnel and print the public URL when it appears."""
     exe = _cloudflared()
     if not exe:
@@ -112,8 +112,12 @@ def _share(port: int) -> None:
                 print("\n" + "=" * 68)
                 print("  PUBLIC URL:  " + url, flush=True)
                 print("=" * 68, flush=True)
-                print("  Anyone with this link reaches the sign-in page and needs", flush=True)
-                print("  the shared password to get past it.", flush=True)
+                if no_auth:
+                    print("  *** NO LOGIN *** -- anyone with this link has full access:", flush=True)
+                    print("  your API quota, the crawler, drafts and reports.", flush=True)
+                else:
+                    print("  Anyone with this link reaches the sign-in page and needs", flush=True)
+                    print("  the shared password to get past it.", flush=True)
                 print("  The address changes every restart, and the tunnel dies when", flush=True)
                 print("  this process stops or the machine sleeps.", flush=True)
                 print("  For a fixed address, use a named tunnel -- see SETUP.md.\n")
@@ -236,7 +240,7 @@ def main() -> int:
     if args.domain:
         _named_tunnel(port, args.domain)
     elif args.share:
-        _share(port)
+        _share(port, no_auth=args.no_auth)
     elif not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
