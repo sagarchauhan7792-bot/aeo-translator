@@ -1,0 +1,19 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+#
+# Connecting this repo to Render with "New +  Blueprint" reads this file and
+# configures the service automatically -- plan, build command, start command,
+# health check -- so there is nothing to fill in by hand except the Secret
+# Files (credentials.json, gemini_api_key.txt, etc.), which Render's own
+# dashboard handles and this file deliberately does not touch.
+services:
+  - type: web
+    name: blog-studio
+    runtime: python
+    plan: free
+    region: singapore          # closest free-tier region to India; change if needed
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash render_start.sh
+    healthCheckPath: /api/whoami
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10

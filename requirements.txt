@@ -1,0 +1,18 @@
+# Built from a real scan of every import in this codebase (see the commit
+# that added this file) -- not a guess. Versions pinned to what was actually
+# tested locally (Python 3.12.10).
+
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.2
+trafilatura==2.2.0
+indic_transliteration==2.3.82
+
+# Google Docs / Sheets / Drive publishing (gauth.py)
+google-auth-oauthlib==1.4.0
+google-api-python-client==2.199.0
+
+# Google Ads keyword volumes (keywords.py) -- optional feature, blocked on
+# credentials the user has not added yet. Included so the container has it
+# ready; the app degrades gracefully (empty volume columns) without it.
+google-ads>=25.0.0
