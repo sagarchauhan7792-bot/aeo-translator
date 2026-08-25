@@ -236,6 +236,13 @@ def main() -> int:
     ap.add_argument("--set-password", action="store_true",
                     help="set or change the shared team password")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--behind-proxy", action="store_true",
+                    help="this app sits behind a TLS-terminating proxy that "
+                        "sets X-Forwarded-For (Render, a reverse proxy). Makes "
+                        "the session cookie Secure and reads the real client IP "
+                        "from the forwarding header, so sign-in throttling "
+                        "counts per visitor rather than per proxy. --share and "
+                        "--domain imply it.")
     ap.add_argument("--allow-origin", action="append", default=[], metavar="URL",
                     help="let a page served from this origin call the API "
                         "cross-site, e.g. https://sagarchauhan7792-bot.github.io "
@@ -263,7 +270,8 @@ def main() -> int:
     elif not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
-    serve(args.host, port, behind_tls=bool(args.share or args.domain),
+    serve(args.host, port,
+          behind_tls=bool(args.share or args.domain or args.behind_proxy),
           no_auth=args.no_auth, allow_origins=tuple(args.allow_origin))
     return 0
 

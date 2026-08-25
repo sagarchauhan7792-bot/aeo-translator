@@ -1,6 +1,7 @@
 """One Google OAuth flow shared by the Docs, Sheets and Drive clients."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from common import ROOT, MissingCredential, config, log
@@ -16,6 +17,31 @@ CRED_PATH = ROOT / _G["credentials"]
 TOKEN_PATH = ROOT / _G["token"]
 
 _SERVICES: dict[str, object] = {}
+
+
+def _headless() -> bool:
+    """True where no browser can be opened and no operator is watching.
+
+    Render sets RENDER=true in every service. AEO_HEADLESS is the manual escape
+    hatch for any other host.
+    """
+    return bool(os.environ.get("AEO_HEADLESS") or os.environ.get("RENDER"))
+
+
+def _cache(creds) -> None:
+    """Save the refreshed token if the filesystem allows it.
+
+    On Render, token.json is a symlink into /etc/secrets, which is mounted
+    read-only -- so this write fails, and it used to take the whole publish down
+    with it an hour after every deploy, when the access token first expired. The
+    refresh itself already succeeded in memory; caching it is an optimisation,
+    not a requirement.
+    """
+    try:
+        TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+    except OSError as exc:
+        log(f"google: token not cached ({exc.strerror or exc}); it will be "
+            "refreshed again on the next call")
 
 
 def credentials():
@@ -34,7 +60,7 @@ def credentials():
         return creds
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+        _cache(creds)
         return creds
 
     if not CRED_PATH.exists():
@@ -47,10 +73,23 @@ def credentials():
             f"Save it as {CRED_PATH}. The first run opens a browser once to "
             "authorise; the token is cached afterwards.")
 
+    if _headless():
+        # run_local_server() would start a consent server on this host and wait
+        # for a browser that can never reach it -- a job thread hung forever,
+        # with no error. Say what is missing instead.
+        raise MissingCredential(
+            "Google authorisation (token.json)",
+            "creating the translation Docs and writing rows to the tracker Sheet",
+            "The OAuth consent screen needs a browser, and this host has none. "
+            "Authorise once on your own machine -- run any publishing command "
+            "locally and complete the browser step -- then upload the token.json "
+            "it writes as a Secret File named token.json on this service, "
+            "alongside credentials.json.")
+
     log("google: opening a browser for one-time authorisation")
     flow = InstalledAppFlow.from_client_secrets_file(str(CRED_PATH), SCOPES)
     creds = flow.run_local_server(port=0)
-    TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+    _cache(creds)
     log("google: token saved")
     return creds
 

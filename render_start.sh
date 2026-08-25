@@ -18,17 +18,25 @@ for f in credentials.json token.json gemini_api_key.txt pagespeed_api_key.txt \
   fi
 done
 
+if [ ! -e auth.json ]; then
+  echo "render_start: no auth.json Secret File -- the app will refuse to start."
+  echo "render_start: run \`python -m studio --set-password\` locally, then upload"
+  echo "render_start: the auth.json it writes as a Secret File named auth.json."
+fi
+
 # --host 0.0.0.0 because Render's router needs the app listening on all
 # interfaces, not just localhost, to forward traffic in. --no-browser because
-# there is no local desktop here to open one on.
+# there is no local desktop here to open one on. --behind-proxy because Render
+# terminates TLS in front of us: without it the session cookie is issued without
+# the Secure flag, and every sign-in attempt looks like it came from the proxy,
+# so the throttle counts all visitors as one.
 #
-# --no-auth carries forward the choice already made for the local deployment
-# (explicitly, twice) -- but a Render URL is PERMANENT and publicly indexable
-# (certificate-transparency logs, search engines), unlike the local machine's
-# ephemeral Cloudflare tunnel that changed on every restart. That is a real
-# jump in exposure and worth reconsidering before this first deploy, not
-# assumed to carry over silently. To add a password instead: upload an
-# auth.json Secret File (run `python -m studio --set-password` locally first
-# to generate one at aeo-translator/auth.json, then upload that file's
-# contents as the Secret File named auth.json), and delete --no-auth below.
-exec python -m studio --host 0.0.0.0 --port "${PORT:-8765}" --no-browser --no-auth
+# There is deliberately no --no-auth here. A Render URL is PERMANENT and
+# publicly indexable (certificate-transparency logs, search engines), unlike the
+# ephemeral Cloudflare tunnel that changed on every restart -- and this app holds
+# live API keys, spends Gemini quota, crawls whatever it is pointed at and can
+# write to Drive. Upload auth.json and it asks for the password you already set.
+# If you truly want it open to anyone who finds the URL, add --no-auth below
+# yourself, knowing that is what it does.
+exec python -m studio --host 0.0.0.0 --port "${PORT:-8765}" \
+     --no-browser --behind-proxy

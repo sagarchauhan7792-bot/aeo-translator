@@ -218,6 +218,53 @@ is set up) Drive write access, with nothing standing in front of it.
 python -m studio --domain studio.yourdomain.com --no-auth
 ```
 
+### Running it on Render, so the laptop can be off
+
+`--share`/`--domain` both die with the terminal that started them. To keep the
+app up independently, deploy it: [render.yaml](render.yaml) already describes
+the whole service, so Render configures itself from the repo and there is
+nothing to fill in by hand except the credentials.
+
+**1. Authorise Google locally first, if you want publishing to work.** The OAuth
+consent screen needs a browser, and the container has none. Run any publishing
+command on your own machine, complete the browser step once, and keep the
+`token.json` it writes -- you upload it in step 3. (Without it, everything except
+Docs/Sheets publishing still works.)
+
+**2. Set a password locally, if you have not already:**
+
+```bash
+python -m studio --set-password
+```
+
+That writes `auth.json`. A Render URL is permanent, publicly indexable, and
+holds live API keys -- unlike the tunnel address that changed on every restart --
+so `render_start.sh` deliberately does **not** pass `--no-auth`. Without an
+`auth.json` Secret File the service refuses to start, by design.
+
+**3. Deploy.** In the Render dashboard: **New + → Blueprint**, pick this repo,
+apply. Then open the created service → **Environment → Secret Files**, and add
+each file you have, using exactly these names:
+
+| Secret File | Needed for |
+|---|---|
+| `auth.json` | starting at all (the password from step 2) |
+| `gemini_api_key.txt` | the writer backend -- Draft, Fix-it, the rewrite loop |
+| `credentials.json` + `token.json` | publishing to Docs and the tracker Sheet |
+| `bhashini_user_id.txt` + `bhashini_api_key.txt` | Bhashini translation |
+| `pagespeed_api_key.txt` | Core Web Vitals in the audit |
+| `google-ads.yaml` + `google_ads_customer_id.txt` | keyword volumes |
+
+`render_start.sh` links each one into place under the plain filename the app
+already looks for. Redeploy after adding them.
+
+**What the free plan costs you.** No persistent disk: `cache/`, `out/`,
+`drafts/`, `reports/`, `packets/` and `state.jsonl` are wiped on every deploy and
+every spin-down, so the Library tab starts empty again. Published Docs and the
+tracker Sheet survive -- they live in your Drive. And the container sleeps after
+about 15 minutes idle, so the next visit waits roughly a minute for it to wake.
+A Render Disk and a paid plan fix both.
+
 ### What everyone shares
 
 One workspace. Everyone who signs in sees the same crawls, drafts, reports and

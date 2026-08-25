@@ -13,7 +13,23 @@ services:
     region: singapore          # closest free-tier region to India; change if needed
     buildCommand: pip install -r requirements.txt
     startCommand: bash render_start.sh
-    healthCheckPath: /api/whoami
+    healthCheckPath: /api/whoami   # answers before the sign-in gate, by design
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.10
+      # No browser here, so the Google OAuth consent flow cannot be run on this
+      # host. Authorise once locally and upload the resulting token.json as a
+      # Secret File; with this set the app says so instead of hanging a job
+      # thread on a consent server nobody can reach.
+      - key: AEO_HEADLESS
+        value: "1"
+
+# Two things the free plan does and this file cannot change:
+#
+# 1. No persistent disk. cache/, out/, drafts/, reports/, packets/ and
+#    state.jsonl live in the container's filesystem and are gone on every deploy
+#    and every spin-down. Published Google Docs and the tracker Sheet survive --
+#    they are in your Drive -- but the Library tab is rebuilt from state.jsonl
+#    and will look empty afterwards. Add a Render Disk (paid) to keep them.
+# 2. Spin-down after ~15 minutes idle. The next request wakes the container and
+#    waits roughly a minute for it. The health check does not prevent this.
