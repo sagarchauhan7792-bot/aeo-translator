@@ -426,11 +426,21 @@ let BASE = clean(new URLSearchParams(location.search).get('api')
 if (new URLSearchParams(location.search).get('api')) localStorage.setItem(BASE_KEY, BASE);
 
 const url = p => (p.startsWith('/') ? BASE + p : p);
+const apiFail = m => Object.assign(new Error(m), { explained: true });
 const api = (p, o) => fetch(url(p), o).then(r => {
   const ct = r.headers.get('content-type') || '';
   // A static host answers an unknown /api/ path with its own 404 page. Parsing
   // that as JSON fails with a message about "<", which explains nothing.
-  if (!ct.includes('json')) throw new Error('no backend at ' + (BASE || location.origin));
+  if (!ct.includes('json')) throw apiFail('');
+  // A backend that is running but will not talk to this page is not a backend
+  // this page can use. Without this, boot() reads an error object as if it were
+  // capabilities and dies halfway through rendering.
+  if (r.status === 401) throw apiFail('There is an app answering at ' + BASE
+    + ', but it requires a sign-in, and the session cookie does not travel '
+    + 'between origins.');
+  if (r.status === 403) throw apiFail('There is an app answering at ' + BASE
+    + ', but it refused a request from ' + location.origin + '. Start it with '
+    + '--allow-origin ' + location.origin + '.');
   return r.json();
 });
 
@@ -450,23 +460,32 @@ function askBackend(msg) {
   box.innerHTML = '';
   const b = el('div', 'banner warn');
   b.innerHTML = `<b>No backend connected.</b> ${msg ? esc(msg) + ' ' : ''}
-    This page is the Blog Studio interface; the crawler, the scorer, the
-    translator and your credentials all live in the Python app, which has to be
-    running somewhere this page can reach.
-    <div style="margin:12px 0 10px">
+    This page is the Blog Studio <i>interface</i>. The crawler, the scorer, the
+    translator and your credentials all live in the Python app behind it, and a
+    static host cannot run Python — so the app has to be running somewhere
+    before any of these tabs can do anything.
+    <p style="margin:12px 0 6px"><b>Run it on this machine, then open it directly:</b></p>
+    <pre class="code">git clone https://github.com/sagarchauhan7792-bot/aeo-translator
+cd aeo-translator
+pip install -r requirements.txt
+python -m studio</pre>
+    That serves this same page at <code>http://127.0.0.1:8765</code> with the
+    backend already attached — same origin, nothing to configure, no sign-in
+    problems. It is the shortest route, and this hosted copy exists for pointing
+    at an app running somewhere else.
+    <p style="margin:14px 0 6px"><b>Already have one running?</b> Give its address:</p>
+    <div style="margin-bottom:10px">
       <input id="apiUrl" placeholder="http://127.0.0.1:8765"
              value="${esc(BASE || 'http://127.0.0.1:8765')}"
              style="min-width:280px">
       <button id="apiGo" class="btn primary" style="margin-left:8px">Connect</button>
     </div>
-    <b>To run it on this machine:</b>
-    <pre class="code">git clone https://github.com/sagarchauhan7792-bot/aeo-translator
-cd aeo-translator
-pip install -r requirements.txt
-python -m studio --allow-origin ${esc(location.origin)}</pre>
-    That opens the same interface at <code>http://127.0.0.1:8765</code> with the
-    backend already attached — <code>--allow-origin</code> is only needed to drive
-    it from this hosted copy instead.
+    <span class="muted" style="font-size:13px">Driving a <i>local</i> app from this
+    page is a cross-origin request, so start it with
+    <code>--allow-origin ${esc(location.origin)}</code>, and add
+    <code>--no-auth</code> if you have set a password — the sign-in cookie does
+    not travel between origins. Neither is needed when you open
+    <code>127.0.0.1</code> directly.</span>
     <div style="margin-top:12px"><a href="docs/">What this tool is, and how the
     scorer was calibrated →</a></div>`;
   box.appendChild(b);
@@ -483,7 +502,11 @@ async function boot() {
   try {
     CAPS = await api('/api/capabilities');
   } catch (e) {
-    return askBackend(BASE ? 'Nothing answered at ' + BASE + '.' : '');
+    return askBackend(e && e.explained ? e.message
+                      : (BASE ? 'Nothing answered at ' + BASE + ' — it is either '
+                                + 'not running, or running without --allow-origin '
+                                + location.origin + ', which the browser blocks '
+                                + 'before this page sees a reply.' : ''));
   }
   $('#writerPill').textContent = 'writer: ' + (CAPS.writer || 'none');
   $('#writerPill').className = 'pill ' + (CAPS.writer_inline ? 'ok' : 'warn');
