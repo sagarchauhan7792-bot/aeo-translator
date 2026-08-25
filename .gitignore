@@ -48,3 +48,6 @@ cloudflared-login.log
 
 # Downloaded OAuth client JSONs (same sensitivity as credentials.json)
 client_secret_*.json
+
+# Local throwaway test harness
+.test_serve.py
