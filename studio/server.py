@@ -22,7 +22,8 @@ from extract import Article
 from . import auth
 from .jobs import RUNNER
 
-UI_DIR = Path(__file__).resolve().parent / "ui"
+UI_DIR = Path(__file__).resolve().parent / "ui"   # optional extra assets
+INDEX = ROOT / "index.html"
 DRAFTS = ROOT / "drafts"
 BRIEFS = ROOT / "briefs"
 CFG = config()
@@ -533,6 +534,11 @@ class Handler(BaseHTTPRequestHandler):
     # Set by serve(); when False the app is localhost-only and needs no login.
     require_auth = False
     behind_tls = False
+    # Origins allowed to call the API from another site. Empty by default:
+    # same-origin only, exactly as before. Populated by --allow-origin, which
+    # exists so the same index.html served as a static page elsewhere (GitHub
+    # Pages) can drive a backend running here.
+    allow_origins: frozenset = frozenset()
 
     def log_message(self, fmt, *args):        # quiet; jobs do the logging
         pass
@@ -576,11 +582,26 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     # -- helpers ----------------------------------------------------------
+    def _allowed_origin(self) -> str:
+        """The request's Origin, if it is on the allowlist. Empty otherwise."""
+        origin = (self.headers.get("Origin") or "").strip()
+        return origin if origin and origin in self.allow_origins else ""
+
+    def _cors(self) -> None:
+        origin = self._allowed_origin()
+        if not origin:
+            return
+        self.send_header("Access-Control-Allow-Origin", origin)
+        # Without this, a shared cache could hand an allowed origin's response
+        # to a request from a different one.
+        self.send_header("Vary", "Origin")
+
     def _send(self, code: int, payload: bytes, ctype: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
+        self._cors()
         self.end_headers()
         try:
             self.wfile.write(payload)
@@ -642,9 +663,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/index.html"):
-            return self._file(UI_DIR / "index.html")
+            return self._file(INDEX, INDEX.parent)
         if path.startswith("/ui/"):
-            return self._file(UI_DIR / path[4:])
+            return self._file(UI_DIR / path[4:], UI_DIR)
 
         if path == "/api/capabilities":
             return self._json(capabilities())
@@ -699,6 +720,23 @@ class Handler(BaseHTTPRequestHandler):
 
         return self._json({"error": "not found"}, 404)
 
+    def do_OPTIONS(self) -> None:
+        """CORS preflight. Answers only for allowlisted origins."""
+        if not self._allowed_origin():
+            return self._send(403, b"", "text/plain; charset=utf-8")
+        self.send_response(204)
+        self._cors()
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # Chrome's Private Network Access check: a page on a public origin
+        # calling 127.0.0.1 sends this on the preflight and refuses the real
+        # request without the matching answer.
+        if self.headers.get("Access-Control-Request-Private-Network"):
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_POST(self) -> None:
         path = urllib.parse.urlparse(self.path).path
 
@@ -713,7 +751,8 @@ class Handler(BaseHTTPRequestHandler):
 
         # A hostile page must not be able to make the browser fire an
         # authenticated request on the user's behalf.
-        if not auth.origin_ok(self.headers, self.headers.get("Host", "")):
+        if not (self._allowed_origin()
+                or auth.origin_ok(self.headers, self.headers.get("Host", ""))):
             return self._json({"error": "cross-origin request refused"}, 403)
 
         if not path.startswith("/api/run/"):
@@ -798,11 +837,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _file(self, path: Path) -> None:
+    def _file(self, path: Path, base: Path) -> None:
         try:
             path = path.resolve()
-            path.relative_to(UI_DIR.resolve())       # no traversal out of ui/
+            path.relative_to(base.resolve())         # no traversal out of base
         except (ValueError, OSError):
+            return self._json({"error": "forbidden"}, 403)
+        # The repo root holds credentials.json and token.json, so serving from
+        # it is allowed for exactly one file and nothing else.
+        if base.resolve() == ROOT.resolve() and path != INDEX.resolve():
             return self._json({"error": "forbidden"}, 403)
         if not path.is_file():
             return self._json({"error": "not found"}, 404)
@@ -813,7 +856,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve(host: str = "127.0.0.1", port: int = 8765, *,
-          behind_tls: bool = False, no_auth: bool = False) -> None:
+          behind_tls: bool = False, no_auth: bool = False,
+          allow_origins: tuple = ()) -> None:
     local_only = host in ("127.0.0.1", "localhost", "::1")
 
     # The interlock. Everything else in this file is convenience; this is the
@@ -840,6 +884,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, *,
     else:
         Handler.require_auth = not local_only or auth.is_configured()
     Handler.behind_tls = behind_tls
+    Handler.allow_origins = frozenset(o.rstrip("/") for o in allow_origins if o)
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     log(f"Blog Studio on http://{host}:{port}")
@@ -850,6 +895,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765, *,
                                     else "  (NO PASSWORD SET -- run --set-password)"))
     else:
         log("  localhost only, no sign-in required")
+    for o in sorted(Handler.allow_origins):
+        log(f"  API open to {o}")
 
     caps = capabilities()
     log(f"  writer: {caps['writer'] or 'NONE'}"

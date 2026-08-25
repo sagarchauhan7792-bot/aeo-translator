@@ -218,6 +218,7 @@ pre.code{background:var(--surface-2);border:1px solid var(--rule);border-radius:
     <button data-tab="library">Library</button>
   </nav>
   <div class="spacer"></div>
+  <span class="pill" id="apiPill" style="display:none"></span>
   <span class="pill" id="writerPill">…</span>
   <span class="pill" id="packetPill" style="display:none"></span>
   <span class="pill" id="whoPill" style="display:none"></span>
@@ -413,10 +414,77 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 /* ---------- api ---------- */
-const api = (p, o) => fetch(p, o).then(r => r.json());
+/* This file is served two ways: by the app itself (python -m studio), where the
+   API sits under the same origin and BASE stays empty; and as a static page on
+   GitHub Pages, where there is no backend underneath it at all. In the second
+   case the address of a running backend has to come from somewhere, so it is
+   taken from ?api=..., remembered, and asked for on screen if absent. */
+const BASE_KEY = 'studio.api';
+const clean = u => String(u || '').trim().replace(/\/+$/, '');
+let BASE = clean(new URLSearchParams(location.search).get('api')
+                 || localStorage.getItem(BASE_KEY) || '');
+if (new URLSearchParams(location.search).get('api')) localStorage.setItem(BASE_KEY, BASE);
+
+const url = p => (p.startsWith('/') ? BASE + p : p);
+const api = (p, o) => fetch(url(p), o).then(r => {
+  const ct = r.headers.get('content-type') || '';
+  // A static host answers an unknown /api/ path with its own 404 page. Parsing
+  // that as JSON fails with a message about "<", which explains nothing.
+  if (!ct.includes('json')) throw new Error('no backend at ' + (BASE || location.origin));
+  return r.json();
+});
+
+function showApiPill() {
+  if (!BASE) return;
+  const el = $('#apiPill');
+  el.style.display = ''; el.className = 'pill';
+  let host = BASE; try { host = new URL(BASE).host; } catch {}
+  el.innerHTML = 'backend: ' + esc(host) + ' · <a href="#" id="apiEdit">change</a>';
+  $('#apiEdit').onclick = e => { e.preventDefault(); askBackend(); };
+}
+
+function askBackend(msg) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));
+  const box = $('#capBanner');
+  box.innerHTML = '';
+  const b = el('div', 'banner warn');
+  b.innerHTML = `<b>No backend connected.</b> ${msg ? esc(msg) + ' ' : ''}
+    This page is the Blog Studio interface; the crawler, the scorer, the
+    translator and your credentials all live in the Python app, which has to be
+    running somewhere this page can reach.
+    <div style="margin:12px 0 10px">
+      <input id="apiUrl" placeholder="http://127.0.0.1:8765"
+             value="${esc(BASE || 'http://127.0.0.1:8765')}"
+             style="min-width:280px">
+      <button id="apiGo" class="btn primary" style="margin-left:8px">Connect</button>
+    </div>
+    <b>To run it on this machine:</b>
+    <pre class="code">git clone https://github.com/sagarchauhan7792-bot/aeo-translator
+cd aeo-translator
+pip install -r requirements.txt
+python -m studio --allow-origin ${esc(location.origin)}</pre>
+    That opens the same interface at <code>http://127.0.0.1:8765</code> with the
+    backend already attached — <code>--allow-origin</code> is only needed to drive
+    it from this hosted copy instead.
+    <div style="margin-top:12px"><a href="docs/">What this tool is, and how the
+    scorer was calibrated →</a></div>`;
+  box.appendChild(b);
+  $('#apiGo').onclick = () => {
+    const v = clean($('#apiUrl').value);
+    if (!v) return;
+    localStorage.setItem(BASE_KEY, v);
+    location.search = '?api=' + encodeURIComponent(v);
+  };
+}
 
 async function boot() {
-  CAPS = await api('/api/capabilities');
+  showApiPill();
+  try {
+    CAPS = await api('/api/capabilities');
+  } catch (e) {
+    return askBackend(BASE ? 'Nothing answered at ' + BASE + '.' : '');
+  }
   $('#writerPill').textContent = 'writer: ' + (CAPS.writer || 'none');
   $('#writerPill').className = 'pill ' + (CAPS.writer_inline ? 'ok' : 'warn');
 
@@ -438,7 +506,7 @@ async function boot() {
     if (me.auth_required && me.signed_in) {
       const w = $('#whoPill');
       w.style.display = ''; w.className = 'pill';
-      w.innerHTML = esc(me.name) + ' · <a href="/logout">sign out</a>';
+      w.innerHTML = esc(me.name) + ` · <a href="${url('/logout')}">sign out</a>`;
     }
   } catch {}
 
@@ -895,10 +963,10 @@ $('#r-go').onclick = () => {
     const card = el('div', 'card');
     card.appendChild(el('h2', null, 'Report built'));
     const a = el('a', 'btn primary', 'Open the report');
-    a.href = '/report/' + r.name + '.html'; a.target = '_blank'; a.rel = 'noopener';
+    a.href = url('/report/' + r.name + '.html'); a.target = '_blank'; a.rel = 'noopener';
     card.appendChild(a);
     const b = el('a', 'btn', 'Download the CSV');
-    b.href = '/report/' + r.name + '.csv'; b.style.marginLeft = '8px';
+    b.href = url('/report/' + r.name + '.csv'); b.style.marginLeft = '8px';
     card.appendChild(b);
     card.appendChild(el('p', 'hint', 'Saved to reports/' + r.name + '.html — print it to PDF from the browser.'));
     out.appendChild(card);

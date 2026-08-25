@@ -155,6 +155,31 @@ listen on any non-local address until a password is set**, because it holds live
 API keys and can write to your Drive. One shared password, one shared workspace —
 not per-user accounts. See [SETUP.md](SETUP.md).
 
+### The page on GitHub Pages
+
+`index.html` sits at the repo root and is the whole front end -- one file, no
+build step. It is served two ways from that single copy:
+
+- by the app itself, at `http://127.0.0.1:8765`, where the API is same-origin
+  and nothing has to be configured;
+- as a static page at
+  [sagarchauhan7792-bot.github.io/aeo-translator](https://sagarchauhan7792-bot.github.io/aeo-translator/),
+  where there is no backend underneath it at all.
+
+The hosted copy is the interface, not the tool: the crawler, the scorer, the
+translator and the credentials all live in the Python app. So it opens asking
+for the address of a running backend rather than pretending to work, and
+remembers it (`?api=http://127.0.0.1:8765`, kept in `localStorage`).
+
+Driving a local backend from that hosted page is cross-origin, which the API
+refuses by default. Allow it explicitly, per origin:
+
+```bash
+python -m studio --allow-origin https://sagarchauhan7792-bot.github.io
+```
+
+Without that flag nothing changes: same-origin only, exactly as before.
+
 What the audit deliberately does **not** report: search volume, keyword
 difficulty, backlinks and rank tracking. None of those can be measured from the
 page itself. Volume wires into Google Ads when the credentials exist; the rest
@@ -247,6 +272,7 @@ verify the pipeline, not to ship client work.
 ## Layout
 
 ```
+index.html       the Blog Studio front end -- one file, no build step
 run.py           orchestrator, rewrite loop, resume
 sources.py       file | url | sitemap ingest
 extract.py       HTML → Article model
@@ -260,6 +286,8 @@ calibrate.py     does the scorer separate native from translated?
 keywords.py      regional keyword sets + Google Ads volumes
 publish_gdocs.py formatted Google Docs
 sheet.py         the tracker sheet
+studio/          the local server behind index.html
+docs/            the project page published at /docs/
 ```
 
 ## Licence

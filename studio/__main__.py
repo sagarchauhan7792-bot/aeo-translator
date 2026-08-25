@@ -236,6 +236,11 @@ def main() -> int:
     ap.add_argument("--set-password", action="store_true",
                     help="set or change the shared team password")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--allow-origin", action="append", default=[], metavar="URL",
+                    help="let a page served from this origin call the API "
+                        "cross-site, e.g. https://sagarchauhan7792-bot.github.io "
+                        "-- needed only when index.html is opened from a static "
+                        "host instead of from this server. Repeatable.")
     args = ap.parse_args()
 
     if args.set_password:
@@ -259,7 +264,7 @@ def main() -> int:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
 
     serve(args.host, port, behind_tls=bool(args.share or args.domain),
-          no_auth=args.no_auth)
+          no_auth=args.no_auth, allow_origins=tuple(args.allow_origin))
     return 0
 
 
