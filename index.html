@@ -426,9 +426,16 @@ const HOSTED_API = '';
 
 const BASE_KEY = 'studio.api';
 const clean = u => String(u || '').trim().replace(/\/+$/, '');
-let BASE = clean(new URLSearchParams(location.search).get('api')
-                 || localStorage.getItem(BASE_KEY) || '');
-if (new URLSearchParams(location.search).get('api')) localStorage.setItem(BASE_KEY, BASE);
+const PARAM = new URLSearchParams(location.search).get('api');
+/* An address typed in once is remembered, which is right until it is wrong: a
+   stale one pins this page to a backend that no longer exists and hides the
+   public instance behind a dead address forever. ?api= with nothing after it
+   forgets it. */
+if (PARAM !== null) {
+  if (clean(PARAM)) localStorage.setItem(BASE_KEY, clean(PARAM));
+  else localStorage.removeItem(BASE_KEY);
+}
+let BASE = clean(PARAM || localStorage.getItem(BASE_KEY) || '');
 
 const url = p => (p.startsWith('/') ? BASE + p : p);
 const apiFail = m => Object.assign(new Error(m), { explained: true });
@@ -484,6 +491,8 @@ python -m studio</pre>
              value="${esc(BASE || 'http://127.0.0.1:8765')}"
              style="min-width:280px">
       <button id="apiGo" class="btn primary" style="margin-left:8px">Connect</button>
+      ${BASE ? `<a href="?api=" style="margin-left:12px;font-size:13px">forget
+        ${esc(BASE)}</a>` : ''}
     </div>
     <span class="muted" style="font-size:13px">Driving a <i>local</i> app from this
     page is a cross-origin request, so start it with
