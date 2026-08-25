@@ -221,42 +221,42 @@ python -m studio --domain studio.yourdomain.com --no-auth
 ### Running it on Render, so the laptop can be off
 
 `--share`/`--domain` both die with the terminal that started them. To keep the
-app up independently, deploy it: [render.yaml](render.yaml) already describes
-the whole service, so Render configures itself from the repo and there is
-nothing to fill in by hand except the credentials.
+app up independently -- and to let anyone open it without installing anything --
+deploy it: [render.yaml](render.yaml) already describes the whole service, so
+Render configures itself from the repo.
 
-**1. Authorise Google locally first, if you want publishing to work.** The OAuth
-consent screen needs a browser, and the container has none. Run any publishing
-command on your own machine, complete the browser step once, and keep the
-`token.json` it writes -- you upload it in step 3. (Without it, everything except
-Docs/Sheets publishing still works.)
+**1. Deploy.** In the Render dashboard: **New + → Blueprint**, pick this repo,
+apply. That is the whole deploy; the service starts with no credentials and the
+audit, ideas, site crawl and compare tabs already work.
 
-**2. Set a password locally, if you have not already:**
+**2. Decide what the public instance is allowed to do.** It runs **open** -- no
+sign-in, by design, because a page nobody can get into is not public. Whoever
+finds the URL can therefore use whatever you mount on it. Add Secret Files under
+**Environment → Secret Files**, using exactly these names, and add only the ones
+whose public use you accept:
 
-```bash
-python -m studio --set-password
-```
+| Secret File | Unlocks | Open to everyone means |
+|---|---|---|
+| *(none)* | audit, ideas, site crawl, compare | nothing of yours is spent |
+| `gemini_api_key.txt` | Draft, Fix-it, the rewrite loop | strangers spend your free Gemini quota |
+| `pagespeed_api_key.txt` | Core Web Vitals in the audit | strangers spend your PageSpeed quota |
+| `bhashini_*.txt` | Bhashini translation | strangers spend your ULCA quota |
+| `credentials.json` + `token.json` | Docs + tracker Sheet publishing | **strangers create Docs in your Drive** |
+| `google-ads.yaml` + `google_ads_customer_id.txt` | keyword volumes | strangers spend your Ads API quota |
 
-That writes `auth.json`. A Render URL is permanent, publicly indexable, and
-holds live API keys -- unlike the tunnel address that changed on every restart --
-so `render_start.sh` deliberately does **not** pass `--no-auth`. Without an
-`auth.json` Secret File the service refuses to start, by design.
+The last row is the one to think hardest about. Keep publishing on the copy you
+run locally, where it is behind your own machine, and leave it off the public
+one.
 
-**3. Deploy.** In the Render dashboard: **New + → Blueprint**, pick this repo,
-apply. Then open the created service → **Environment → Secret Files**, and add
-each file you have, using exactly these names:
+**3. Authorise Google locally first, if you do mount it.** The OAuth consent
+screen needs a browser and the container has none, so run a publishing command
+on your own machine, complete the browser step once, and upload the `token.json`
+it writes alongside `credentials.json`. Without this the app says what is
+missing rather than hanging.
 
-| Secret File | Needed for |
-|---|---|
-| `auth.json` | starting at all (the password from step 2) |
-| `gemini_api_key.txt` | the writer backend -- Draft, Fix-it, the rewrite loop |
-| `credentials.json` + `token.json` | publishing to Docs and the tracker Sheet |
-| `bhashini_user_id.txt` + `bhashini_api_key.txt` | Bhashini translation |
-| `pagespeed_api_key.txt` | Core Web Vitals in the audit |
-| `google-ads.yaml` + `google_ads_customer_id.txt` | keyword volumes |
-
-`render_start.sh` links each one into place under the plain filename the app
-already looks for. Redeploy after adding them.
+**To put a password back on it:** set `OPEN=0` under **Environment**, and upload
+an `auth.json` Secret File (from `python -m studio --set-password` locally).
+Without that file it refuses to start, which is the interlock working.
 
 **What the free plan costs you.** No persistent disk: `cache/`, `out/`,
 `drafts/`, `reports/`, `packets/` and `state.jsonl` are wiped on every deploy and

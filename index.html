@@ -419,6 +419,11 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
    GitHub Pages, where there is no backend underneath it at all. In the second
    case the address of a running backend has to come from somewhere, so it is
    taken from ?api=..., remembered, and asked for on screen if absent. */
+/* The public instance. Set this and the hosted copy of this page connects to it
+   by itself -- no address to type, no sign-in, nothing to install. Left empty,
+   the page only works when it is being served by the app itself. */
+const HOSTED_API = '';
+
 const BASE_KEY = 'studio.api';
 const clean = u => String(u || '').trim().replace(/\/+$/, '');
 let BASE = clean(new URLSearchParams(location.search).get('api')
@@ -445,7 +450,7 @@ const api = (p, o) => fetch(url(p), o).then(r => {
 });
 
 function showApiPill() {
-  if (!BASE) return;
+  if (!BASE) return;   // served by the app itself: the address is the page's own
   const el = $('#apiPill');
   el.style.display = ''; el.className = 'pill';
   let host = BASE; try { host = new URL(BASE).host; } catch {}
@@ -497,10 +502,32 @@ python -m studio</pre>
   };
 }
 
+/* Where the API is depends on how this page was opened, and the cheapest way to
+   find out is to ask rather than to sniff the hostname: the app serving its own
+   page answers on the same origin, and a copy on a static host does not. */
+async function connect() {
+  const tries = BASE ? [BASE] : (HOSTED_API ? ['', HOSTED_API] : ['']);
+  let last;
+  for (const b of tries) {
+    BASE = b;
+    try { return await api('/api/capabilities'); } catch (e) { last = e; }
+  }
+  BASE = tries[0] === '' && tries.length > 1 ? HOSTED_API : tries[0];
+  throw last;
+}
+
+function connecting() {
+  const b = el('div', 'banner info');
+  b.innerHTML = `Connecting to the app… A free host sleeps when nobody has used
+    it, so the first visit after a quiet spell waits up to a minute while it
+    wakes.`;
+  $('#capBanner').appendChild(b);
+}
+
 async function boot() {
-  showApiPill();
+  if (HOSTED_API) connecting();
   try {
-    CAPS = await api('/api/capabilities');
+    CAPS = await connect();
   } catch (e) {
     return askBackend(e && e.explained ? e.message
                       : (BASE ? 'Nothing answered at ' + BASE + ' — it is either '
@@ -508,6 +535,7 @@ async function boot() {
                                 + location.origin + ', which the browser blocks '
                                 + 'before this page sees a reply.' : ''));
   }
+  showApiPill();
   $('#writerPill').textContent = 'writer: ' + (CAPS.writer || 'none');
   $('#writerPill').className = 'pill ' + (CAPS.writer_inline ? 'ok' : 'warn');
 

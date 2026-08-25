@@ -18,11 +18,28 @@ for f in credentials.json token.json gemini_api_key.txt pagespeed_api_key.txt \
   fi
 done
 
-if [ ! -e auth.json ]; then
-  echo "render_start: no auth.json Secret File -- the app will refuse to start."
-  echo "render_start: run \`python -m studio --set-password\` locally, then upload"
-  echo "render_start: the auth.json it writes as a Secret File named auth.json."
+# The public instance is deliberately open: the point of it is that anyone can
+# open the URL and use the tool without installing anything or being let in.
+# Set OPEN=0 in the Render dashboard to put the sign-in back (upload an
+# auth.json Secret File first, from `python -m studio --set-password` locally).
+OPEN="${OPEN:-1}"
+AUTH_FLAG="--no-auth"
+if [ "$OPEN" = "0" ]; then
+  AUTH_FLAG=""
+  if [ ! -e auth.json ]; then
+    echo "render_start: OPEN=0 but no auth.json Secret File -- the app will refuse"
+    echo "render_start: to start. Run 'python -m studio --set-password' locally and"
+    echo "render_start: upload the auth.json it writes as a Secret File."
+  fi
+else
+  echo "render_start: OPEN -- no sign-in. Anyone with the URL gets the crawler,"
+  echo "render_start: the writer quota, and whatever Secret Files are mounted."
 fi
+
+# Origin of the static copy of index.html on GitHub Pages, so that page can
+# drive this backend. Visitors using this service's own URL are same-origin and
+# never need it.
+ALLOW_ORIGIN="${ALLOW_ORIGIN:-https://sagarchauhan7792-bot.github.io}"
 
 # --host 0.0.0.0 because Render's router needs the app listening on all
 # interfaces, not just localhost, to forward traffic in. --no-browser because
@@ -31,12 +48,12 @@ fi
 # the Secure flag, and every sign-in attempt looks like it came from the proxy,
 # so the throttle counts all visitors as one.
 #
-# There is deliberately no --no-auth here. A Render URL is PERMANENT and
-# publicly indexable (certificate-transparency logs, search engines), unlike the
-# ephemeral Cloudflare tunnel that changed on every restart -- and this app holds
-# live API keys, spends Gemini quota, crawls whatever it is pointed at and can
-# write to Drive. Upload auth.json and it asks for the password you already set.
-# If you truly want it open to anyone who finds the URL, add --no-auth below
-# yourself, knowing that is what it does.
+# A Render URL is PERMANENT and publicly indexable (certificate-transparency
+# logs, search engines), so running open is a decision rather than a default
+# carried over from the local setup: whoever finds it gets the crawler, the
+# writer quota, and Drive write access if credentials.json and token.json are
+# mounted. The safe shape of an open instance is to mount NO Google credentials
+# -- the audit, ideas, site crawl and compare tabs all run without any -- and to
+# add only the keys whose public use is acceptable.
 exec python -m studio --host 0.0.0.0 --port "${PORT:-8765}" \
-     --no-browser --behind-proxy
+     --no-browser --behind-proxy $AUTH_FLAG --allow-origin "$ALLOW_ORIGIN"
