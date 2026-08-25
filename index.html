@@ -422,7 +422,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 /* The public instance. Set this and the hosted copy of this page connects to it
    by itself -- no address to type, no sign-in, nothing to install. Left empty,
    the page only works when it is being served by the app itself. */
-const HOSTED_API = '';
+const HOSTED_API = 'https://blog-studio.onrender.com';
 
 const BASE_KEY = 'studio.api';
 const clean = u => String(u || '').trim().replace(/\/+$/, '');
