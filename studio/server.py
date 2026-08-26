@@ -55,8 +55,10 @@ def capabilities() -> dict:
     if not has_bhashini:
         caps["missing"].append({
             "what": "Bhashini credentials",
-            "detail": "Translation needs a free ULCA user id and API key from "
-                      "bhashini.gov.in. Until then use the mymemory test engine."})
+            "detail": "A free ULCA user id and API key from bhashini.gov.in "
+                      "would give a purpose-built Indic NMT model. Until then "
+                      "Gemini translates, for meaning and register rather than "
+                      "word for word."})
 
     import keywords as kwmod
     has_ads = kwmod.YAML_PATH.exists() and bool(kwmod._customer_id())
@@ -96,13 +98,19 @@ def capabilities() -> dict:
         "translate": True,                   # mymemory works without credentials
         "publish": has_google,
     }
+    # Best first: the UI selects engines[0] by default, so this order is the
+    # policy. Bhashini when it is configured, then whichever LLM endpoints have
+    # keys -- those translate for register rather than token by token -- and
+    # MyMemory last, which is a pipeline test rather than a translator.
+    from common import secret
     caps["engines"] = ["bhashini"] if has_bhashini else []
-    if caps["writer_inline"] and caps["writer"] == "gemini_free":
-        # Reuses the same GEMINI_API_KEY already configured for the writer, so
-        # it is the free fallback for the moment MyMemory's ~1000 word/day
-        # anonymous quota runs out -- no separate signup needed.
+    if secret("GEMINI_API_KEY", "gemini_api_key.txt"):
         caps["engines"].append("gemini")
+    if secret("OPENAI_API_KEY", "openai_api_key.txt"):
+        caps["engines"].append("openai")
     caps["engines"].append("mymemory")
+    caps["protected"] = sorted(Handler.protected)
+    caps["auth_configured"] = auth.is_configured()
     caps["languages"] = [{"code": e["code"], "name": e["name"], "native": e["native"]}
                          for e in CFG["languages"]]
     caps["sites"] = [k for k in CFG["site_profiles"] if not k.startswith("_")]
@@ -323,7 +331,8 @@ def act_translate(body: dict, job) -> dict:
     from writer import get_writer
 
     langs = body.get("langs") or ["hi"]
-    engine = body.get("engine") or "mymemory"
+    # Fall back to the best engine this install has, not to the test engine.
+    engine = body.get("engine") or (capabilities()["engines"] or ["mymemory"])[0]
     publish = bool(body.get("publish"))
 
     if body.get("slug"):
@@ -539,6 +548,11 @@ class Handler(BaseHTTPRequestHandler):
     # exists so the same index.html served as a static page elsewhere (GitHub
     # Pages) can drive a backend running here.
     allow_origins: frozenset = frozenset()
+    # Actions that require a signed-in operator even when the app itself is
+    # open. This is what lets one instance be public and fully credentialed at
+    # the same time: anyone may audit a page or crawl a site, while the actions
+    # that spend a quota or write to the owner's Drive stay behind the password.
+    protected: frozenset = frozenset()
 
     def log_message(self, fmt, *args):        # quiet; jobs do the logging
         pass
@@ -636,7 +650,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, auth.first_run_page(), "text/html; charset=utf-8")
 
         if path == "/login":
-            if not self.require_auth:
+            # Reachable in an open instance too, when some actions are gated --
+            # otherwise there would be a password and nowhere to enter it.
+            if not self.require_auth and not self.protected:
                 return self._redirect("/")
             if not auth.is_configured():
                 if auth.is_local_request(self.client_address[0]):
@@ -763,6 +779,23 @@ class Handler(BaseHTTPRequestHandler):
         if not fn:
             return self._json({"error": f"unknown action {kind}"}, 400)
 
+        if kind in self.protected:
+            if not auth.is_configured():
+                return self._json(
+                    {"error": f"'{kind}' is restricted on this instance, but no "
+                              "password has been set, so nobody can be let in. "
+                              "Run `python -m studio --set-password` and mount "
+                              "the auth.json it writes."}, 503)
+            # Deliberately not self._session(): that returns a synthetic local
+            # session when the app runs open, which is exactly the case this
+            # check exists for.
+            if not auth.session_from_headers(self.headers):
+                return self._json(
+                    {"error": f"'{kind}' needs a sign-in on this instance. It "
+                              "spends the owner's quota or writes to their "
+                              "Drive, so it is not open to everyone.",
+                     "login": "/login"}, 401)
+
         body = self._body()
         label = (body.get("topic") or body.get("slug") or body.get("url")
                  or kind).strip()[:60]
@@ -857,7 +890,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(host: str = "127.0.0.1", port: int = 8765, *,
           behind_tls: bool = False, no_auth: bool = False,
-          allow_origins: tuple = ()) -> None:
+          allow_origins: tuple = (), protect: tuple = ()) -> None:
     local_only = host in ("127.0.0.1", "localhost", "::1")
 
     # The interlock. Everything else in this file is convenience; this is the
@@ -885,6 +918,12 @@ def serve(host: str = "127.0.0.1", port: int = 8765, *,
         Handler.require_auth = not local_only or auth.is_configured()
     Handler.behind_tls = behind_tls
     Handler.allow_origins = frozenset(o.rstrip("/") for o in allow_origins if o)
+    Handler.protected = frozenset(k for k in protect if k in ACTIONS)
+    unknown = [k for k in protect if k and k not in ACTIONS]
+    if unknown:
+        raise SystemExit(
+            f"\n--protect names actions that do not exist: {', '.join(unknown)}\n"
+            f"Known actions: {', '.join(sorted(ACTIONS))}\n")
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     log(f"Blog Studio on http://{host}:{port}")
@@ -897,6 +936,10 @@ def serve(host: str = "127.0.0.1", port: int = 8765, *,
         log("  localhost only, no sign-in required")
     for o in sorted(Handler.allow_origins):
         log(f"  API open to {o}")
+    if Handler.protected:
+        log(f"  sign-in required for: {', '.join(sorted(Handler.protected))}")
+        if not auth.is_configured():
+            log("  *** those actions are unusable: no password is set ***")
 
     caps = capabilities()
     log(f"  writer: {caps['writer'] or 'NONE'}"

@@ -397,107 +397,284 @@ class MyMemory(Bhashini):
         return out
 
 
-class GeminiTranslate(Bhashini):
-    """Gemini as a translation engine -- the free fallback once MyMemory's
-    daily quota (roughly 1000 words) runs out.
+# ----------------------------------------------------------- LLM engines
+#
+# Two service ids, because the two directions are different jobs and must not
+# share a cache. Bumping the version suffix is also how a prompt change
+# invalidates everything translated by the previous one: entries keyed by the
+# old id are simply never looked up again, and nothing has to be deleted.
+_TONE_SID = "llm-tone-v1"
+_LITERAL_SID = "llm-literal-v1"
 
-    Not a new signup: it reuses the same GEMINI_API_KEY already configured for
-    the writer backend (see writer/gemini_free.py), so this is available the
-    moment that key exists, with no additional registration. Gemini's free tier
-    is request-rate limited rather than a hard daily word cap, so it survives a
-    much larger run than MyMemory before it needs to back off.
+_TOKEN_RULE = (
+    "Some segments contain tokens shaped like zqNqz (the letters z, q, then "
+    "digits, then q, z). Copy those through completely unchanged, in place -- "
+    "they are not words, do not translate them, do not alter the digits inside."
+)
 
-    Still not Bhashini: translation quality on Indic languages is generally
-    behind a purpose-built NMT model, and every article it touches is stamped
-    so the origin stays visible in the tracker. Selected with --engine gemini.
+_REPLY_RULE = (
+    'Reply with JSON only, one entry per segment, keyed by its number as a '
+    'string: {"translations": {"0": "...", "1": "...", ...}}'
+)
+
+
+def _literal_prompt(numbered: str, src_name: str, tgt_name: str) -> str:
+    """Back-translation. This one MUST stay word-for-word.
+
+    The English round trip is not a deliverable, it is the measuring
+    instrument: quality.score_fidelity compares content words and protected
+    spans between the source and this. A back-translation that improved the
+    phrasing would report drift that is not in the target text, and hide drift
+    that is.
+    """
+    return "\n".join([
+        f"Translate each numbered segment from {src_name} to {tgt_name}.",
+        "",
+        "This is a fidelity check, not writing. Translate as literally as the "
+        "grammar allows, preserve the sentence structure of the original, and "
+        "do not improve, condense, expand or reorder anything. No commentary. "
+        "Do not merge or split segments.",
+        "", _TOKEN_RULE,
+        "", f"SEGMENTS:\n{numbered}",
+        "", _REPLY_RULE,
+    ])
+
+
+def _tone_prompt(numbered: str, src_name: str, tgt_name: str, tgt_code: str) -> str:
+    """Forward translation, written the way the language is actually written.
+
+    A word-for-word rendering is what an NMT box produces, and every measured
+    difference between native prose and machine output in features.py is a
+    consequence of it: prepositions carried across literally, English relative
+    clauses stacked up, English comma rhythm, uniform sentence length. An LLM
+    does not have to make those trades, so this asks it not to -- using the same
+    calibrated rubric the transcreation pass is held to, rather than a vague
+    instruction to sound natural.
+
+    What it may not do is change the facts. Numbers, dosages, locked brand
+    terms, claim strength and hedges are all checked after the reply lands, and
+    a violation blocks publication, so they are stated as hard constraints
+    rather than preferences.
+    """
+    from writer.base import language_rubric, glossary_rules
+    return "\n".join([
+        f"You are a {tgt_name} writer. Render each numbered segment from "
+        f"{src_name} into {tgt_name} as it would have been written in "
+        f"{tgt_name} in the first place -- not as a word-for-word conversion.",
+        "",
+        "Restructure sentences where the natural phrasing differs. Choose the "
+        "idiom a reader of this language expects. Keep the register consistent "
+        "across every segment: these are consecutive fragments of one article, "
+        "not unrelated lines.",
+        "",
+        "HARD CONSTRAINTS -- checked automatically after you reply:",
+        "  * Exactly one output per input, same numbering. Never merge, split, "
+        "reorder, drop or add a segment.",
+        "  * Keep each segment close to the source in length (roughly within a "
+        "fifth). Condensing several sentences into one loses content the "
+        "fidelity check will flag as truncation.",
+        "  * Every number, dosage, percentage, price, phone number, email and "
+        "URL appears byte-identical to the source.",
+        "  * Translate meaning, never invent it. Do not add an example, a "
+        "statistic or a claim that is not in the segment you were given.",
+        "", _TOKEN_RULE,
+        "", glossary_rules(tgt_code),
+        "", language_rubric(tgt_code),
+        "", f"SEGMENTS:\n{numbered}",
+        "", _REPLY_RULE,
+    ])
+
+
+class LLMTranslate(Bhashini):
+    """Translate with a writer backend instead of an NMT service.
+
+    Bhashini remains the right engine for these languages when its credentials
+    exist -- it is purpose-built, free and government-run. This is what runs
+    until they do, and it has one advantage a translation API cannot have: an
+    NMT model can only translate, so tone has to be repaired afterwards by a
+    separate pass, whereas a model that can write can be asked for the right
+    register the first time.
+
+    Subclasses differ only in which backend they call. The cache is shared
+    between them on purpose: when Gemini exhausts its quota half way through an
+    article and the run falls through to another endpoint, the segments already
+    paid for stay paid for.
     """
 
+    engine_name = "llm"
+    engine_label = "LLM"
+
     def __init__(self) -> None:
-        super().__init__(user_id="gemini", api_key="none")
-        self._writer = None
+        super().__init__(user_id=self.engine_name, api_key="none")
+        self._chain: list = []
 
-    def _get_writer(self):
-        if self._writer is None:
-            from writer.gemini_free import GeminiFreeWriter
-            self._writer = GeminiFreeWriter()
-        return self._writer
+    # -- backends ---------------------------------------------------------
+    def _backends(self) -> list:
+        """Every usable writer backend, best first. Never empty if creds exist."""
+        raise NotImplementedError
 
-    def require_creds(self) -> None:
-        try:
-            self._get_writer()
-        except Exception as exc:
-            raise MissingCredential(
-                "Gemini API key",
-                "translating via the free Gemini fallback engine",
-                "Get a free key at https://aistudio.google.com/apikey and save "
-                f"it to aeo-translator/gemini_api_key.txt, or set GEMINI_API_KEY. "
-                f"({exc})") from exc
-        warn("engine=gemini: free fallback, not Bhashini. Good for when "
-             "MyMemory's daily quota is exhausted or Bhashini credentials are "
-             "not yet set up; quality on Indic languages is generally behind a "
-             "purpose-built NMT model.")
+    def _get_chain(self) -> list:
+        if not self._chain:
+            self._chain = self._backends()
+        return self._chain
 
     def service_id(self, src: str, tgt: str) -> str:
-        return "gemini"
+        # English is only ever the target for the back-translation round trip.
+        return _LITERAL_SID if tgt == "en" else _TONE_SID
 
     def _compute(self, texts: list[str], src: str, tgt: str, sid: str) -> list[str]:
         from common import lang_by_code
         src_name = lang_by_code(src)["name"] if src != "en" else "English"
         tgt_name = lang_by_code(tgt)["name"] if tgt != "en" else "English"
-        writer = self._get_writer()
-
         numbered = "\n".join(f"{i}: {t}" for i, t in enumerate(texts))
-        prompt = (
-            f"Translate each numbered segment below from {src_name} to {tgt_name}.\n"
-            "This is machine-translation output that a later editing pass will "
-            "polish for tone -- translate literally and faithfully, no commentary, "
-            "no explanation, no merging or splitting segments.\n\n"
-            "Some segments contain tokens shaped like zqNqz (the letters z, q, "
-            "then digits, then q, z). Copy those tokens through completely "
-            "unchanged, in place -- they are not words, do not translate them, "
-            "do not alter the digits inside them.\n\n"
-            f"SEGMENTS:\n{numbered}\n\n"
-            "Reply with JSON only, one entry per segment, keyed by its number as "
-            'a string: {"translations": {"0": "...", "1": "...", ...}}'
-        )
+        prompt = (_literal_prompt(numbered, src_name, tgt_name)
+                  if sid == _LITERAL_SID
+                  else _tone_prompt(numbered, src_name, tgt_name, tgt))
 
-        last = None
-        for attempt in range(_CFG["max_retries"]):
-            try:
-                data = writer.generate(prompt, stage="translate_mt", slug="mt",
-                                       lang=tgt, salt=f"b{len(texts)}a{attempt}")
-                mapping = data.get("translations") if isinstance(data, dict) else None
-                if not isinstance(mapping, dict):
-                    raise BhashiniError(
-                        f"gemini returned no usable translations object: "
-                        f"{str(data)[:160]}")
-                out = []
-                missing = []
-                for i in range(len(texts)):
-                    val = mapping.get(str(i))
-                    if val is None or not str(val).strip():
-                        missing.append(i)
-                        out.append(texts[i])          # keep the source rather than drop it
-                    else:
-                        out.append(str(val).strip())
-                if missing and attempt < _CFG["max_retries"] - 1:
-                    raise BhashiniError(
-                        f"gemini dropped {len(missing)}/{len(texts)} segment(s)")
-                if missing:
-                    warn(f"gemini: {len(missing)} segment(s) came back untranslated "
-                         "after retries; kept the source text for those")
-                self.calls += 1
-                return out
-            except Exception as exc:
-                last = exc
-                if attempt < _CFG["max_retries"] - 1:
-                    time.sleep(2 ** attempt)
-        raise BhashiniError(f"gemini translation failed after retries: {last}")
+        chain = self._get_chain()
+        last: Exception | None = None
+
+        # Every backend gets the full retry budget before the next one is tried:
+        # a 429 is worth waiting out on a good model before falling back to a
+        # worse one, but not worth failing the whole run over.
+        for pos, backend in enumerate(chain):
+            for attempt in range(_CFG["max_retries"]):
+                try:
+                    data = backend.generate(prompt, stage="translate", slug="mt",
+                                            lang=tgt,
+                                            salt=f"b{len(texts)}a{attempt}")
+                    mapping = (data.get("translations")
+                               if isinstance(data, dict) else None)
+                    if not isinstance(mapping, dict):
+                        raise BhashiniError(
+                            f"{backend.name} returned no usable translations "
+                            f"object: {str(data)[:160]}")
+                    out, missing = [], []
+                    for i in range(len(texts)):
+                        val = mapping.get(str(i))
+                        if val is None or not str(val).strip():
+                            missing.append(i)
+                            out.append(texts[i])   # keep the source, never drop it
+                        else:
+                            out.append(str(val).strip())
+                    if missing and attempt < _CFG["max_retries"] - 1:
+                        raise BhashiniError(
+                            f"{backend.name} dropped {len(missing)}/{len(texts)} "
+                            "segment(s)")
+                    if missing:
+                        warn(f"{backend.name}: {len(missing)} segment(s) came back "
+                             "untranslated after retries; kept the source text")
+                    self.calls += 1
+                    return out
+                except Exception as exc:
+                    last = exc
+                    if attempt < _CFG["max_retries"] - 1:
+                        time.sleep(2 ** attempt)
+            if pos < len(chain) - 1:
+                warn(f"{backend.name} could not translate this batch ({last}); "
+                     f"falling through to {chain[pos + 1].name}")
+
+        raise BhashiniError(
+            f"translation failed after every backend ({', '.join(b.name for b in chain)}): {last}")
 
     def translate_article(self, art: Article, tgt: str, *, src: str = "en") -> Article:
         out = super().translate_article(art, tgt, src=src)
-        out.meta["mt_engine"] = "gemini (free fallback -- not Bhashini)"
+        out.meta["mt_engine"] = f"{self.engine_label} (not Bhashini)"
         return out
+
+
+class GeminiTranslate(LLMTranslate):
+    """Gemini AI Studio, falling through to an OpenAI-compatible endpoint.
+
+    Not a new signup: it reuses the same GEMINI_API_KEY already configured for
+    the writer backend, so it is available the moment that key exists. Its free
+    tier is request-rate limited rather than capped at a daily word count, so it
+    survives a far larger run than MyMemory before backing off. Selected with
+    --engine gemini, and the default whenever Bhashini has no credentials.
+    """
+
+    engine_name = "gemini"
+    engine_label = "Gemini"
+
+    def _backends(self) -> list:
+        from writer.gemini_free import GeminiFreeWriter
+        chain = [GeminiFreeWriter()]
+        try:
+            from writer.openai_free import OpenAICompatWriter
+            chain.append(OpenAICompatWriter())
+        except Exception:
+            pass          # optional second endpoint; absence is normal
+        return chain
+
+    def require_creds(self) -> None:
+        try:
+            self._get_chain()
+        except Exception as exc:
+            raise MissingCredential(
+                "Gemini API key",
+                "translating via the free Gemini engine",
+                "Get a free key at https://aistudio.google.com/apikey and save "
+                "it to aeo-translator/gemini_api_key.txt, or set GEMINI_API_KEY. "
+                f"({exc})") from exc
+        extra = [b.name for b in self._chain[1:]]
+        warn("engine=gemini: translating for meaning and register, not word for "
+             "word. Not Bhashini -- add ULCA credentials when you have them, as "
+             "a purpose-built Indic NMT model is a better base."
+             + (f" Falling through to {', '.join(extra)} if quota runs out."
+                if extra else ""))
+
+
+class OpenAITranslate(LLMTranslate):
+    """Any OpenAI-shaped endpoint as the primary translator. --engine openai.
+
+    OpenAI's own API is paid -- there is no free ChatGPT tier -- but the request
+    format is shared by providers that do have one. See writer/openai_free.py.
+    """
+
+    engine_name = "openai"
+    engine_label = "OpenAI-compatible"
+
+    def _backends(self) -> list:
+        from writer.openai_free import OpenAICompatWriter
+        chain = [OpenAICompatWriter()]
+        try:
+            from writer.gemini_free import GeminiFreeWriter
+            chain.append(GeminiFreeWriter())
+        except Exception:
+            pass
+        return chain
+
+    def require_creds(self) -> None:
+        try:
+            self._get_chain()
+        except Exception as exc:
+            raise MissingCredential(
+                "OpenAI-compatible API key",
+                "translating via an OpenAI-shaped endpoint",
+                "Save the key to aeo-translator/openai_api_key.txt (or set "
+                "OPENAI_API_KEY). OpenAI's own API is paid; to use a provider "
+                "with a free tier, also write its base URL to "
+                f"openai_base_url.txt and its model to openai_model.txt. ({exc})"
+            ) from exc
+
+
+def best_engine() -> str:
+    """The best translator this install actually has credentials for.
+
+    The order is a quality judgement, not just availability: Bhashini is
+    purpose-built for these languages; an LLM endpoint translates for register
+    but is a general model; MyMemory is a way to prove the pipeline runs, and
+    its output should not reach a client.
+    """
+    from common import secret
+    if (secret("BHASHINI_USER_ID", "bhashini_user_id.txt")
+            and secret("BHASHINI_API_KEY", "bhashini_api_key.txt")):
+        return "bhashini"
+    if secret("GEMINI_API_KEY", "gemini_api_key.txt"):
+        return "gemini"
+    if secret("OPENAI_API_KEY", "openai_api_key.txt"):
+        return "openai"
+    return "mymemory"
 
 
 _CLIENT: Bhashini | None = None
@@ -510,6 +687,8 @@ def client(engine: str = "bhashini") -> Bhashini:
             _CLIENT = MyMemory()
         elif engine == "gemini":
             _CLIENT = GeminiTranslate()
+        elif engine == "openai":
+            _CLIENT = OpenAITranslate()
         else:
             _CLIENT = Bhashini()
         _CLIENT._engine = engine

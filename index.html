@@ -563,10 +563,16 @@ async function boot() {
 
   try {
     const me = await api('/api/whoami');
-    if (me.auth_required && me.signed_in) {
-      const w = $('#whoPill');
+    const w = $('#whoPill');
+    if (me.signed_in && (me.auth_required || CAPS.protected?.length)) {
       w.style.display = ''; w.className = 'pill';
       w.innerHTML = esc(me.name) + ` · <a href="${url('/logout')}">sign out</a>`;
+    } else if (CAPS.protected?.length) {
+      // An open instance where some tools are still the owner's. Say which,
+      // before someone fills in a form and gets refused on submit.
+      w.style.display = ''; w.className = 'pill warn';
+      w.innerHTML = 'sign in for ' + esc(CAPS.protected.join(', '))
+                  + ` · <a href="${url('/login')}">sign in</a>`;
     }
   } catch {}
 
@@ -578,6 +584,14 @@ async function boot() {
 
 function renderCaps() {
   const box = $('#capBanner'); box.innerHTML = '';
+
+  // A button that cannot work should not look like it can. Without a writer
+  // backend there is nothing to write the draft or the fix, so say that on the
+  // control rather than letting the job fail after the click.
+  if (!CAPS.stages?.draft) {
+    const d = $('#d-go');
+    if (d) { d.disabled = true; d.title = 'No writer backend is configured on this instance.'; }
+  }
   if (!CAPS.writer_inline && CAPS.writer) {
     const b = el('div', 'banner warn');
     b.innerHTML = `<b>The writer pauses.</b> Backend <code>claude_local</code> queues work packets

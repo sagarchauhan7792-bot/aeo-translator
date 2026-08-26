@@ -236,6 +236,13 @@ def main() -> int:
     ap.add_argument("--set-password", action="store_true",
                     help="set or change the shared team password")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--protect", default="", metavar="ACTIONS",
+                    help="comma-separated actions that require a signed-in "
+                        "operator even when the rest of the app is open, e.g. "
+                        "translate,draft,fix. This is how one public instance "
+                        "can hold real credentials: everyone gets the audit and "
+                        "the crawler, only you get the things that spend your "
+                        "quota or write to your Drive.")
     ap.add_argument("--behind-proxy", action="store_true",
                     help="this app sits behind a TLS-terminating proxy that "
                         "sets X-Forwarded-For (Render, a reverse proxy). Makes "
@@ -272,7 +279,8 @@ def main() -> int:
 
     serve(args.host, port,
           behind_tls=bool(args.share or args.domain or args.behind_proxy),
-          no_auth=args.no_auth, allow_origins=tuple(args.allow_origin))
+          no_auth=args.no_auth, allow_origins=tuple(args.allow_origin),
+          protect=tuple(k.strip() for k in args.protect.split(",") if k.strip()))
     return 0
 
 

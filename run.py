@@ -252,9 +252,13 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="ignore cached intermediates and redo every step")
     ap.add_argument("--writer", default=None, help="force a writer backend")
-    ap.add_argument("--engine", default="bhashini", choices=["bhashini", "mymemory"],
-                    help="translation engine; mymemory is a rate-limited test "
-                         "stand-in for verifying the pipeline without credentials")
+    ap.add_argument("--engine", default="auto",
+                    choices=["auto", "bhashini", "gemini", "openai", "mymemory"],
+                    help="translation engine. auto picks the best one this "
+                         "install has credentials for: bhashini, then gemini or "
+                         "openai (which translate for register rather than word "
+                         "for word), then mymemory -- a rate-limited test "
+                         "stand-in for verifying the pipeline, not for shipping")
     args = ap.parse_args()
 
     langs = ([e["code"] for e in CFG["languages"]] if args.langs == "all"
@@ -274,8 +278,11 @@ def main() -> int:
         print(f"\n{exc}\n", file=sys.stderr)
         return 2
 
-    from translate import client as bh_client
-    bh = bh_client(args.engine)
+    from translate import client as bh_client, best_engine
+    engine = best_engine() if args.engine == "auto" else args.engine
+    if args.engine == "auto":
+        log(f"translation engine: {engine}")
+    bh = bh_client(engine)
     try:
         bh.require_creds()
     except MissingCredential as exc:
