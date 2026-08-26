@@ -35,6 +35,29 @@ PROTECTED = [
 _PRIORITY = ["url", "email", "phone", "dosage", "price_inr", "percent", "number"]
 
 
+# Enumerators: the "1." in "Q1.", "Question 1.", "प्रश्न 1." or a bare "1." at
+# the head of a list item. These number the document; they do not state a fact
+# about it, and the AEO layer replaces them by design -- source FAQs written as
+# "Q1. What is ...?" become structured {q, a} pairs rendered as headings.
+#
+# The rule is deliberately blind to whatever precedes the digit. An earlier
+# version keyed on a "Q"/"A" prefix and made things worse: it stripped the
+# source's "Q1." while leaving the translation's "प्रश्न 1." and the
+# back-translation's "Question 1." intact, so a document that had merely
+# renumbered its FAQ was reported as having INVENTED the numbers 1, 2 and 3.
+# Symmetry across scripts matters more here than precision about the prefix.
+#
+# Found by the first real end-to-end run: a HIIMS post with a Q1-Q5 FAQ block
+# was held back with nine defects, eight of which were this. Their house style
+# is a numbered FAQ, so it would have blocked most of the site.
+#
+# The cost is narrow and worth stating: a sentence ending on a bare one- or
+# two-digit number ("reduce the dose to 2.") loses that number from the check.
+# Anything carrying a unit, a currency symbol or a percent sign is matched by a
+# higher-priority pattern before the bare-number rule ever sees it.
+_ENUM_RX = re.compile(r"(?<!\d)\d{1,2}[.)](?=\s|$)")
+
+
 def normalise_digits(text: str) -> str:
     return "".join(_DIGIT_MAP.get(ch, ch) for ch in text or "")
 
@@ -42,6 +65,11 @@ def normalise_digits(text: str) -> str:
 def find_protected(text: str) -> dict[str, list[str]]:
     """Return every protected span in `text`, keyed by kind, with overlaps removed."""
     text = normalise_digits(text or "")
+    # Blank out enumerators the same way diff_numbers does, and with spaces of
+    # equal length so every offset below still lines up. Without this the
+    # multiset comparison in diff_protected counts "Q1." against "1." and
+    # reports an invented number on a document that only renumbered its FAQ.
+    text = _ENUM_RX.sub(lambda m: " " * len(m.group(0)), text)
     claimed: list[tuple[int, int]] = []
     found: dict[str, list[str]] = {}
 
@@ -99,7 +127,6 @@ def diff_protected(source: str, target: str) -> list[dict]:
 
 _NUM_RX = re.compile(r"\d+(?:\.\d+)?")
 
-
 def diff_numbers(source: str, target: str) -> list[dict]:
     """Compare the bare numeric values of two texts, across scripts and units.
 
@@ -113,6 +140,10 @@ def diff_numbers(source: str, target: str) -> list[dict]:
     The number itself is what matters -- 500 becoming 50 is the failure worth
     catching, and it is caught in any script.
 
+    List and FAQ enumerators are removed from both sides first: "Q1." numbers
+    the document rather than stating a fact about it, and the AEO layer replaces
+    that numbering by design.
+
     Compared as SETS, not multisets. The AEO layer deliberately restates key
     facts: "30 minutes" appears in the TL;DR, again in the direct answer, and
     again in an FAQ. Counting occurrences flags every correctly-structured
@@ -122,6 +153,7 @@ def diff_numbers(source: str, target: str) -> list[dict]:
     """
     def values(text: str) -> set[str]:
         cleaned = re.sub(r"(?<=\d)[,](?=\d{3}\b)", "", normalise_digits(text or ""))
+        cleaned = _ENUM_RX.sub(" ", cleaned)
         return {v.rstrip(".").lstrip("0") or "0" for v in _NUM_RX.findall(cleaned)}
 
     src, tgt = values(source), values(target)
