@@ -447,12 +447,18 @@ const api = (p, o) => fetch(url(p), o).then(r => {
   // A backend that is running but will not talk to this page is not a backend
   // this page can use. Without this, boot() reads an error object as if it were
   // capabilities and dies halfway through rendering.
-  if (r.status === 401) throw apiFail('There is an app answering at ' + BASE
-    + ', but it requires a sign-in, and the session cookie does not travel '
-    + 'between origins.');
-  if (r.status === 403) throw apiFail('There is an app answering at ' + BASE
-    + ', but it refused a request from ' + location.origin + '. Start it with '
-    + '--allow-origin ' + location.origin + '.');
+  //
+  // Refusing ONE action is a different thing and belongs to the caller: it
+  // names which action and why, and the job box can show that. Only a refusal
+  // of everything else is a connection problem.
+  if (!p.startsWith('/api/run/')) {
+    if (r.status === 401) throw apiFail('There is an app answering at ' + BASE
+      + ', but it requires a sign-in, and the session cookie does not travel '
+      + 'between origins.');
+    if (r.status === 403) throw apiFail('There is an app answering at ' + BASE
+      + ', but it refused a request from ' + location.origin + '. Start it with '
+      + '--allow-origin ' + location.origin + '.');
+  }
   return r.json();
 });
 
@@ -650,7 +656,20 @@ function runJob(kind, body, onDone) {
 
   return api('/api/run/' + kind, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
-  }).then(({job}) => new Promise(res => {
+  }).then(resp => new Promise(res => {
+    const job = resp && resp.job;
+    if (!job) {
+      // The server refused instead of queueing -- an action that needs a
+      // sign-in, an unknown action, a body it could not use. Without this the
+      // poll below asks for job "undefined", gets a 404 back, and renders it as
+      // "undefined - undefined", which tells nobody anything.
+      dot.className = 'dot fail';
+      t.textContent = 'not started';
+      log.innerHTML = esc((resp && resp.error) || 'the server did not start this job')
+        + (resp && resp.login
+           ? ` <a href="${url(resp.login)}">sign in</a>` : '');
+      return res(resp || {});
+    }
     const tick = async () => {
       const j = await api('/api/job/' + job);
       // A page reload can tear the box out from under an in-flight poll. The
