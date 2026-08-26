@@ -292,6 +292,7 @@ def main() -> int:
     done = ledger_load()
     pending_packets: list[str] = []
     results: list[JobRecord] = []
+    titles: dict[str, str] = {}
 
     for art in articles:
         log(f"\n===== {art.title[:70]} ({art.words()} words) =====")
@@ -323,6 +324,20 @@ def main() -> int:
 
             ledger_append(rec)
             results.append(rec)
+            titles[rec.key] = art.title
+
+    # The app writes a tracker row on every published run; the CLI did not,
+    # so a `python run.py` publish left a Doc in Drive and no record of it
+    # anywhere except the local ledger -- which is the one place that does not
+    # survive a host with no disk. Same call, same place in the flow.
+    if not args.no_publish and results:
+        try:
+            import sheet
+            sheet.append(results, titles)
+        except MissingCredential as exc:
+            warn(f"tracker sheet not updated: {exc.what}")
+        except Exception as exc:
+            warn(f"tracker sheet not updated ({exc.__class__.__name__}): {exc}")
 
     # ------------------------------------------------------------- summary
     print("\n" + "=" * 78)
