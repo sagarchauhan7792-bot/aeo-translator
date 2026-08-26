@@ -29,6 +29,45 @@ HEADERS = [
 STATE = ROOT / "sheet_state.json"
 
 
+def _find_tracker() -> str:
+    """Look the tracker up in Drive by name.
+
+    sheet_state.json remembers the id, which is enough on a machine that keeps
+    its files. On an ephemeral host it is not: the file is wiped on every
+    spin-down, and without this lookup the next publish would create a SECOND
+    tracker with the same name, then a third, scattering one project's history
+    across a pile of identical spreadsheets in the owner's Drive.
+
+    Drive is already the durable store. Asking it is cheaper than trying to keep
+    a local pointer alive, and it makes creating the tracker idempotent.
+    """
+    try:
+        q = ("mimeType = 'application/vnd.google-apps.spreadsheet' and "
+             f"name = '{_G['sheet_name']}' and trashed = false")
+        found = drive().files().list(q=q, fields="files(id,name)", pageSize=10,
+                                     orderBy="createdTime").execute()
+        for f in found.get("files") or []:
+            # A matching name is not proof it is our tracker. There is already
+            # one spreadsheet in this account with this exact name and a single
+            # tab called "Log", which is not this file's format -- appending
+            # rows into it would corrupt someone else's document. Adopt a
+            # candidate only if it carries the tab this module writes.
+            try:
+                meta = sheets().spreadsheets().get(
+                    spreadsheetId=f["id"], fields="sheets.properties.title").execute()
+            except Exception:
+                continue
+            tabs = [sh["properties"]["title"] for sh in meta.get("sheets", [])]
+            if TAB in tabs:
+                return f["id"]
+            log(f"tracker: ignoring '{f['name']}' ({f['id'][:12]}...) -- it has "
+                f"tabs {tabs}, not '{TAB}', so it is a different document")
+    except Exception as exc:
+        warn(f"could not search Drive for the tracker ({exc.__class__.__name__}); "
+             "a new one may be created")
+    return ""
+
+
 def _spreadsheet_id() -> str:
     """Find the tracker, or create it once and remember the id."""
     if _G.get("sheet_id"):
@@ -36,6 +75,12 @@ def _spreadsheet_id() -> str:
     saved = read_json(STATE, default={}) or {}
     if saved.get("spreadsheet_id"):
         return saved["spreadsheet_id"]
+
+    existing = _find_tracker()
+    if existing:
+        write_json(STATE, {"spreadsheet_id": existing, "found": "drive"})
+        log(f"tracker: reusing the existing sheet {existing}")
+        return existing
 
     svc = sheets()
     ss = svc.spreadsheets().create(body={
@@ -142,3 +187,58 @@ def append(records: list, titles: dict[str, str]) -> str:
     url = f"https://docs.google.com/spreadsheets/d/{sid}"
     log(f"tracker: appended {len(values)} row(s) -> {url}")
     return url
+
+
+def recent(limit: int = 200) -> list[dict]:
+    """Read the tracker back, newest first.
+
+    The Library tab is built from state.jsonl, which does not survive a host
+    without a disk. The same rows are already in the tracker, which does, so
+    this is where the history comes from once the local ledger is gone.
+    """
+    # Deliberately NOT _spreadsheet_id(): that creates the tracker when none
+    # exists, and opening a read-only tab must never conjure a spreadsheet into
+    # the owner's Drive as a side effect.
+    saved = read_json(STATE, default={}) or {}
+    sid = _G.get("sheet_id") or saved.get("spreadsheet_id") or _find_tracker()
+    if not sid:
+        return []
+    try:
+        rows = (sheets().spreadsheets().values()
+                .get(spreadsheetId=sid, range=f"{TAB}!A2:Z{limit + 1}")
+                .execute().get("values") or [])
+    except Exception as exc:
+        warn(f"tracker: could not read '{TAB}' ({exc.__class__.__name__})")
+        return []
+    idx = {h: i for i, h in enumerate(HEADERS)}
+
+    def cell(row, name):
+        i = idx.get(name)
+        return row[i] if i is not None and i < len(row) else ""
+
+    def num(row, name):
+        try:
+            return float(cell(row, name))
+        except (TypeError, ValueError):
+            return None
+
+    out = []
+    for row in rows:
+        if not any(c.strip() for c in row):
+            continue
+        out.append({
+            "slug": cell(row, "Title"),
+            "lang": cell(row, "Language"),
+            "status": (cell(row, "Status") or "").lower().replace(" ", "_"),
+            "ai_pct": num(row, "AI-likeness % (proxy)"),
+            "human_likeness": num(row, "Human-likeness"),
+            "aeo": num(row, "AEO score"),
+            "fidelity": num(row, "Fidelity"),
+            "words": num(row, "Words"),
+            "doc_url": cell(row, "Doc Link"),
+            "source": cell(row, "Source URL"),
+            "ts": 0,
+            "from_sheet": True,
+        })
+    out.reverse()
+    return out

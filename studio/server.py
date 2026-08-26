@@ -529,6 +529,29 @@ def act_report(body: dict, job) -> dict:
             "path": str(out / f"{name}.html"), "name": name}
 
 
+_SHEET_CACHE: dict = {"at": 0.0, "rows": []}
+
+
+def _library_from_sheet() -> list:
+    """The tracker as a stand-in ledger. Cached: this is a network call on a
+    tab the user may click repeatedly, and the rows change only when a run
+    finishes."""
+    import time
+    from gauth import CRED_PATH
+    if not CRED_PATH.exists():
+        return []
+    if time.time() - _SHEET_CACHE["at"] < 120:
+        return _SHEET_CACHE["rows"]
+    try:
+        import sheet as sheetmod
+        rows = sheetmod.recent()
+    except Exception as exc:
+        log(f"library: could not read the tracker ({exc.__class__.__name__})")
+        rows = []
+    _SHEET_CACHE.update(at=time.time(), rows=rows)
+    return rows
+
+
 ACTIONS = {"audit": act_audit, "ideas": act_ideas, "draft": act_draft,
            "translate": act_translate, "site": act_site, "geo": act_geo,
            "perf": act_perf, "compete": act_compete, "fix": act_fix,
@@ -697,6 +720,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/library":
             rows = sorted(ledger_load().values(), key=lambda r: r.get("ts", 0),
                           reverse=True)
+            # state.jsonl does not survive a host with no disk, but the same
+            # rows were written to the tracker, which does. An empty local
+            # ledger on a deployed instance means "wiped", not "nothing ever
+            # ran", so read the history back rather than showing a blank tab.
+            if not rows:
+                rows = _library_from_sheet()
             return self._json(rows[:200])
 
         if path == "/api/drafts":
