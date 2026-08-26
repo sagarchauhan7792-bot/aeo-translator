@@ -810,11 +810,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if kind in self.protected:
             if not auth.is_configured():
+                # Two ways out, and the useful one depends on something this
+                # process cannot know: whether a password already exists
+                # somewhere else. Naming only --set-password sent the owner off
+                # to create a second one when the file was already sitting in
+                # their project folder.
                 return self._json(
-                    {"error": f"'{kind}' is restricted on this instance, but no "
-                              "password has been set, so nobody can be let in. "
-                              "Run `python -m studio --set-password` and mount "
-                              "the auth.json it writes."}, 503)
+                    {"error": f"'{kind}' needs a sign-in here, but no auth.json "
+                              "is mounted, so nobody can be let in -- including "
+                              "you. Either mount auth.json as a Secret File "
+                              "(run `python -m studio --set-password` locally "
+                              "first if you have never made one), or set the "
+                              "environment variable PROTECT= (empty) to open "
+                              f"'{kind}' to everyone."}, 503)
             # Deliberately not self._session(): that returns a synthetic local
             # session when the app runs open, which is exactly the case this
             # check exists for.
