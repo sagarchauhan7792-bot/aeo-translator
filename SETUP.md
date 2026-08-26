@@ -17,7 +17,33 @@ pip install trafilatura beautifulsoup4 lxml regex indic-transliteration \
 pip install google-ads
 ```
 
-## 2. Bhashini (translation) — free
+## 2. Translation engines
+
+**Bhashini is the right engine for these languages and is not required to
+start.** Until its credentials exist the pipeline uses Gemini, which translates
+for meaning and register rather than word for word -- it is given the same
+calibrated rubric (calque rates, comma density, relative-clause stacking,
+honorifics) that the transcreation pass is held to. Add Bhashini when you have
+it: a purpose-built Indic NMT model is a better base to transcreate from.
+
+Engine order, best first, chosen automatically by `--engine auto`:
+
+| Engine | Needs | Use |
+|---|---|---|
+| `bhashini` | ULCA user id + API key (free) | purpose-built Indic NMT |
+| `gemini` | `gemini_api_key.txt` (free) | register-aware, the default until Bhashini |
+| `openai` | `openai_api_key.txt` | any OpenAI-shaped endpoint; falls in behind Gemini |
+| `mymemory` | nothing | proves the pipeline runs; not for client work |
+
+`gemini` and `openai` fall through to each other, so a run does not die when one
+endpoint's free quota is spent halfway through nine languages.
+
+On OpenAI specifically: **there is no free ChatGPT API tier.** `api.openai.com`
+needs a funded key. The backend speaks the OpenAI request format, which several
+providers with free tiers also speak, so `openai_base_url.txt` and
+`openai_model.txt` point it wherever you like.
+
+## 2a. Bhashini (translation) — free
 
 The production translation engine. Registration is free.
 
@@ -221,49 +247,51 @@ python -m studio --domain studio.yourdomain.com --no-auth
 ### Running it on Render, so the laptop can be off
 
 `--share`/`--domain` both die with the terminal that started them. To keep the
-app up independently -- and to let anyone open it without installing anything --
-deploy it: [render.yaml](render.yaml) already describes the whole service, so
-Render configures itself from the repo.
+app up independently -- and let anyone open it without installing anything --
+deploy it: [render.yaml](render.yaml) describes the whole service, so Render
+configures itself from the repo.
 
-**1. Deploy.** In the Render dashboard: **New + → Blueprint**, pick this repo,
-apply. That is the whole deploy; the service starts with no credentials and the
-audit, ideas, site crawl and compare tabs already work.
+**1. Deploy.** Dashboard: **New + -> Blueprint**, pick this repo, apply. That is
+the whole deploy. It starts with no credentials, and the audit, ideas, crawl,
+GEO, compare and report tabs already work.
 
-**2. Decide what the public instance is allowed to do.** It runs **open** -- no
-sign-in, by design, because a page nobody can get into is not public. Whoever
-finds the URL can therefore use whatever you mount on it. Add Secret Files under
-**Environment → Secret Files**, using exactly these names, and add only the ones
-whose public use you accept:
+**2. Give it the same credentials as your laptop.** Under **Environment ->
+Secret Files**, using exactly these filenames:
 
-| Secret File | Unlocks | Open to everyone means |
-|---|---|---|
-| *(none)* | audit, ideas, site crawl, compare | nothing of yours is spent |
-| `gemini_api_key.txt` | Draft, Fix-it, the rewrite loop | strangers spend your free Gemini quota |
-| `pagespeed_api_key.txt` | Core Web Vitals in the audit | strangers spend your PageSpeed quota |
-| `bhashini_*.txt` | Bhashini translation | strangers spend your ULCA quota |
-| `credentials.json` + `token.json` | Docs + tracker Sheet publishing | **strangers create Docs in your Drive** |
-| `google-ads.yaml` + `google_ads_customer_id.txt` | keyword volumes | strangers spend your Ads API quota |
+| Secret File | Unlocks |
+|---|---|
+| `auth.json` | your sign-in, from `python -m studio --set-password` locally |
+| `gemini_api_key.txt` | the writer, and register-aware translation |
+| `pagespeed_api_key.txt` | Core Web Vitals |
+| `credentials.json` + `token.json` | publishing to Docs and the tracker Sheet |
+| `bhashini_user_id.txt` + `bhashini_api_key.txt` | Bhashini, when you have them |
+| `openai_api_key.txt` | a second endpoint for when Gemini's quota runs out |
 
-The last row is the one to think hardest about. Keep publishing on the copy you
-run locally, where it is behind your own machine, and leave it off the public
-one.
+Authorise Google on your own machine first: the consent screen needs a browser
+and the container has none, so run a publishing command locally, complete the
+browser step once, and upload the `token.json` it writes.
 
-**3. Authorise Google locally first, if you do mount it.** The OAuth consent
-screen needs a browser and the container has none, so run a publishing command
-on your own machine, complete the browser step once, and upload the `token.json`
-it writes alongside `credentials.json`. Without this the app says what is
-missing rather than hanging.
+**3. Nothing else.** `PROTECT` already defaults to `translate,draft,fix`, so
+those three ask for the password while everything else stays open. That is what
+makes step 2 safe: the instance holds real credentials, and a stranger who finds
+the URL still cannot spend your writer quota or create Docs in your Drive.
 
-**To put a password back on it:** set `OPEN=0` under **Environment**, and upload
-an `auth.json` Secret File (from `python -m studio --set-password` locally).
-Without that file it refuses to start, which is the interlock working.
+**Changing the split.** Both are environment variables on the service:
+
+```
+PROTECT=translate,draft,fix     # sign-in for these; empty opens everything
+OPEN=0                          # sign-in for the whole app instead
+```
+
+Without `auth.json`, anything named in `PROTECT` is unusable by everyone,
+including you -- the app says so on startup and in the refusal.
 
 **What the free plan costs you.** No persistent disk: `cache/`, `out/`,
-`drafts/`, `reports/`, `packets/` and `state.jsonl` are wiped on every deploy and
-every spin-down, so the Library tab starts empty again. Published Docs and the
-tracker Sheet survive -- they live in your Drive. And the container sleeps after
-about 15 minutes idle, so the next visit waits roughly a minute for it to wake.
-A Render Disk and a paid plan fix both.
+`drafts/`, `reports/`, `packets/` and `state.jsonl` are wiped on every deploy
+and every spin-down. Published Docs and the tracker survive -- they are in your
+Drive -- and the Library tab reads the tracker back when the local ledger is
+gone, so the history is not lost with the container. The instance also sleeps
+after about 15 minutes idle, so the next visit waits roughly a minute.
 
 ### What everyone shares
 
@@ -280,6 +308,7 @@ collide.
 
 | | |
 |---|---|
+| Per-action gate | `--protect` keeps named actions behind the password while the rest of the app is open |
 | Password | scrypt hash, random salt, minimum 8 characters |
 | Session | signed cookie, HttpOnly, SameSite=Lax, Secure behind the tunnel, 14 days |
 | Brute force | 6 attempts per IP, then a 5-minute lockout |

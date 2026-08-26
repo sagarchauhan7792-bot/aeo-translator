@@ -45,8 +45,17 @@ So the two jobs are split:
 
 Writer backends, tried in order: `claude_local` (work packets processed by a
 `/aeo-rewrite` slash command inside Claude Code — free, no API key, but needs a
-session open) then `gemini_free` (Google AI Studio free tier — needed for
-unattended runs).
+session open, so it is refused on a deployed host where nothing can answer it),
+`gemini_free` (Google AI Studio free tier — needed for unattended runs), then
+`openai_compat` (any OpenAI-shaped endpoint — somewhere to go when Gemini's free
+quota runs out mid-run).
+
+**Until Bhashini credentials exist, Gemini does the translating** — and it is
+asked for the target language's register rather than a literal rendering, using
+the same measured rubric the transcreation pass is held to. An NMT service can
+only translate, so tone has to be repaired afterwards; a model that can write
+can be asked for it the first time. The English back-translation deliberately
+stays literal: it is the fidelity measuring instrument, not a deliverable.
 
 ---
 
