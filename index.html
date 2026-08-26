@@ -438,12 +438,13 @@ if (PARAM !== null) {
 let BASE = clean(PARAM || localStorage.getItem(BASE_KEY) || '');
 
 const url = p => (p.startsWith('/') ? BASE + p : p);
-const apiFail = m => Object.assign(new Error(m), { explained: true });
+const apiFail = (m, status) =>
+  Object.assign(new Error(m), { explained: true, status: status || 0 });
 const api = (p, o) => fetch(url(p), o).then(r => {
   const ct = r.headers.get('content-type') || '';
   // A static host answers an unknown /api/ path with its own 404 page. Parsing
   // that as JSON fails with a message about "<", which explains nothing.
-  if (!ct.includes('json')) throw apiFail('');
+  if (!ct.includes('json')) throw apiFail('', r.status);
   // A backend that is running but will not talk to this page is not a backend
   // this page can use. Without this, boot() reads an error object as if it were
   // capabilities and dies halfway through rendering.
@@ -454,10 +455,10 @@ const api = (p, o) => fetch(url(p), o).then(r => {
   if (!p.startsWith('/api/run/')) {
     if (r.status === 401) throw apiFail('There is an app answering at ' + BASE
       + ', but it requires a sign-in, and the session cookie does not travel '
-      + 'between origins.');
+      + 'between origins.', 401);
     if (r.status === 403) throw apiFail('There is an app answering at ' + BASE
       + ', but it refused a request from ' + location.origin + '. Start it with '
-      + '--allow-origin ' + location.origin + '.');
+      + '--allow-origin ' + location.origin + '.', 403);
   }
   return r.json();
 });
@@ -519,30 +520,67 @@ python -m studio</pre>
 
 /* Where the API is depends on how this page was opened, and the cheapest way to
    find out is to ask rather than to sniff the hostname: the app serving its own
-   page answers on the same origin, and a copy on a static host does not. */
-async function connect() {
-  const tries = BASE ? [BASE] : (HOSTED_API ? ['', HOSTED_API] : ['']);
+   page answers on the same origin, and a copy on a static host does not.
+
+   Same origin is tried FIRST, ahead of any remembered address. A stored value
+   winning over the server that actually served the page is how the app's own
+   URL ended up displaying a box asking for the app's own URL. An explicit
+   ?api= still wins, because that is someone deliberately pointing elsewhere. */
+const WAKE_TRIES = 4;                    // ~30s of patience, see below
+const TRANSIENT = new Set([408, 429, 500, 502, 503, 504]);
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function candidates() {
+  const explicit = PARAM !== null ? clean(PARAM) : '';
+  if (explicit) return [explicit];
+  const out = [''];                      // whatever served this page
+  const stored = clean(localStorage.getItem(BASE_KEY) || '');
+  if (stored) out.push(stored);
+  if (HOSTED_API && !out.includes(clean(HOSTED_API))) out.push(clean(HOSTED_API));
+  return out;
+}
+
+async function connect(onWaking) {
+  const tries = candidates();
   let last;
   for (const b of tries) {
     BASE = b;
-    try { return await api('/api/capabilities'); } catch (e) { last = e; }
+    // A free host sleeps, and its router answers the first request with an
+    // error page while the container starts. Giving up on that is giving up
+    // one second into a wait this page already tells the user takes a minute.
+    // A clean 404 is different -- that is a static host saying, definitively,
+    // that there is no API here -- so it moves on immediately.
+    for (let attempt = 0; attempt < WAKE_TRIES; attempt++) {
+      try { return await api('/api/capabilities'); }
+      catch (e) {
+        last = e;
+        const worthWaiting = !e.status || TRANSIENT.has(e.status);
+        if (!worthWaiting || attempt === WAKE_TRIES - 1) break;
+        if (onWaking) onWaking();
+        await sleep(2000 * Math.pow(2, attempt));      // 2s, 4s, 8s
+      }
+    }
   }
-  BASE = tries[0] === '' && tries.length > 1 ? HOSTED_API : tries[0];
+  BASE = tries[tries.length - 1];
   throw last;
 }
 
+let _waking = false;
 function connecting() {
+  if (_waking) return;
+  _waking = true;
   const b = el('div', 'banner info');
-  b.innerHTML = `Connecting to the app… A free host sleeps when nobody has used
-    it, so the first visit after a quiet spell waits up to a minute while it
-    wakes.`;
+  b.id = 'wakeBanner';
+  b.innerHTML = `Waking the app… A free host sleeps when nobody has used it, so
+    the first visit after a quiet spell waits up to a minute while the container
+    starts. Nothing is wrong.`;
   $('#capBanner').appendChild(b);
 }
 
 async function boot() {
-  if (HOSTED_API) connecting();
   try {
-    CAPS = await connect();
+    CAPS = await connect(connecting);
   } catch (e) {
     return askBackend(e && e.explained ? e.message
                       : (BASE ? 'Nothing answered at ' + BASE + ' — it is either '
